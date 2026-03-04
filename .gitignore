@@ -1,0 +1,65 @@
+# Security - Sensitive Configuration Files
+# API Keys and Secrets
+okx-config.env
+okx_data/.env
+.env
+.env.local
+.env.*.local
+
+# OKX API Credentials
+**/okx_api_key*
+**/okx_secret*
+**/okx_passphrase*
+
+# Trading Bot Sensitive Data
+okx_data/ai_blacklist.json
+okx_data/ai_take_profit_orders.json
+okx_data/ai_pyramid_layers.json
+okx_data/ai_reduce_position_prices.json
+okx_data/ai_sideways_status.json
+okx_data/ai_trend_history.json
+okx_data/grid_active.json
+okx_data/grid_settings.json
+okx_data/smart_grid_log.json
+okx_data/strategy_evolution.json
+okx_data/trading_pause.json
+okx_data/trade_stats.json
+
+# Logs with sensitive data
+okx_data/ai_trade_log.json
+okx_data/ai_evolve_log.json
+
+# Node Modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Backup files
+*.backup
+*.bak
+*.old
+*.orig
+
+# Test files
+test/
+tests/
+__tests__/
+*.test.js
+*.spec.js
