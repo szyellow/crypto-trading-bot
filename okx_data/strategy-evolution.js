@@ -123,9 +123,11 @@ function generateAdjustments(performance, currentParams) {
     // 低胜率情况 - 收紧策略
     if (performance.winRate <= EVOLUTION_CONFIG.winRateLow && performance.totalTrades >= 5) {
         adjustments.push(`胜率偏低(${Math.round(performance.winRate * 100)}%)，收紧止损`);
+        // 修复：止损值应该是负数，收紧意味着更接近0（比如从-2.5到-2.0是错误的，应该是-2.5到-3.0）
+        // 正确的收紧：绝对值变大（-2.5 → -3.0），这样止损更严格
         newParams.stopLoss = Math.max(
-            EVOLUTION_CONFIG.adjustmentRange.stopLoss.max, // -3
-            currentParams.stopLoss + 1 // 向-3靠近
+            EVOLUTION_CONFIG.adjustmentRange.stopLoss.min, // -5
+            currentParams.stopLoss - 0.5 // 向-5靠近，绝对值变大
         );
         newParams.tradeSize = Math.max(
             EVOLUTION_CONFIG.adjustmentRange.tradeSize.min,
@@ -140,8 +142,8 @@ function generateAdjustments(performance, currentParams) {
     // 连续亏损处理
     if (performance.consecutiveLosses >= EVOLUTION_CONFIG.consecutiveLossThreshold) {
         adjustments.push(`连续亏损${performance.consecutiveLosses}笔，暂停交易并收紧策略`);
-        newParams.stopLoss = EVOLUTION_CONFIG.adjustmentRange.stopLoss.max; // -3
-        newParams.tradeSize = EVOLUTION_CONFIG.adjustmentRange.tradeSize.min; // 5
+        newParams.stopLoss = EVOLUTION_CONFIG.adjustmentRange.stopLoss.min; // -5 (更严格)
+        newParams.tradeSize = EVOLUTION_CONFIG.adjustmentRange.tradeSize.min; // 40
         newParams.sentimentThreshold = EVOLUTION_CONFIG.adjustmentRange.sentimentThreshold.max; // 8
     }
     
@@ -228,7 +230,7 @@ async function evolveStrategy(tradeLog) {
         console.log('\n🔄 策略自动调整:');
         adjustments.forEach(a => console.log(`  • ${a}`));
         console.log('\n📋 参数更新:');
-        console.log(`  止损: ${Math.abs(evolution.currentParams.stopLoss)}% → ${Math.abs(newParams.stopLoss)}%`);
+        console.log(`  止损: ${currentParams.stopLoss}% → ${newParams.stopLoss}%`);
         console.log(`  止盈: ${evolution.currentParams.takeProfit}% → ${newParams.takeProfit}%`);
         console.log(`  最大持仓: ${evolution.currentParams.maxPositions} → ${newParams.maxPositions}`);
         console.log(`  单笔金额: $${evolution.currentParams.tradeSize} → $${newParams.tradeSize}`);
