@@ -35,14 +35,28 @@ if (fs.existsSync('./EMERGENCY_STOP.flag')) {
 }
 
 // ============================================
-// 加载持久化黑名单 - 新增
+// 加载持久化黑名单 - 支持分类格式
 // ============================================
 let PERSISTENT_BLACKLIST = [];
+let STABLECOINS_BLACKLIST = [];
 const BLACKLIST_FILE = './ai_blacklist.json';
 if (fs.existsSync(BLACKLIST_FILE)) {
     try {
-        PERSISTENT_BLACKLIST = JSON.parse(fs.readFileSync(BLACKLIST_FILE, 'utf8'));
-        console.log('📋 已加载持久化黑名单:', PERSISTENT_BLACKLIST);
+        const blacklistData = JSON.parse(fs.readFileSync(BLACKLIST_FILE, 'utf8'));
+        // 支持新的分类格式
+        if (blacklistData.stablecoins) {
+            STABLECOINS_BLACKLIST = blacklistData.stablecoins;
+            PERSISTENT_BLACKLIST = [
+                ...(blacklistData.stopped_out || []),
+                ...(blacklistData.manual_ban || [])
+            ];
+            console.log('📋 已加载稳定币黑名单:', STABLECOINS_BLACKLIST);
+            console.log('📋 已加载止损黑名单:', PERSISTENT_BLACKLIST);
+        } else {
+            // 兼容旧格式（数组）
+            PERSISTENT_BLACKLIST = blacklistData;
+            console.log('📋 已加载持久化黑名单:', PERSISTENT_BLACKLIST);
+        }
     } catch (e) {
         console.error('加载黑名单失败:', e.message);
     }
