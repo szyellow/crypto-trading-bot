@@ -1616,6 +1616,16 @@ async function aiTrading() {
                 delete TAKE_PROFIT_ORDERS[coin.symbol];
                 saveTakeProfitOrders();
                 
+                // 重新获取账户数据（持仓已变化）
+                console.log(`  🔄 止盈单成交后重新获取账户数据...`);
+                const freshAccount = await getAccountData();
+                if (freshAccount) {
+                    account.totalEquity = freshAccount.totalEquity;
+                    account.usdtAvailable = freshAccount.usdtAvailable;
+                    account.positions = freshAccount.positions;
+                    console.log(`  ✅ 账户数据已更新: 总资产$${account.totalEquity.toFixed(2)}, 可用$${account.usdtAvailable.toFixed(2)}`);
+                }
+                
                 // 跳过本次分析，因为已经卖出
                 continue;
             } else if (tpStatus.exists && tpStatus.status === 'live') {
