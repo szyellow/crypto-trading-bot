@@ -9,11 +9,11 @@
     "sentimentThreshold": 7
   },
   "performance": {
-    "totalTrades": 0,
+    "totalTrades": 4,
     "wins": 0,
     "losses": 0,
     "consecutiveLosses": 0,
-    "lastTradeTime": null,
+    "lastTradeTime": 1772615763604,
     "paused": false,
     "pauseUntil": null
   }

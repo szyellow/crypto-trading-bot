@@ -1,14 +1,1 @@
-{
-  "stablecoins": [
-    "USDC",
-    "USDT",
-    "USDG",
-    "DAI",
-    "TUSD",
-    "BUSD"
-  ],
-  "stopped_out": [
-    "NEAR"
-  ],
-  "manual_ban": []
-}
+[]

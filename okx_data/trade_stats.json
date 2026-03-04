@@ -1,38 +1,68 @@
 {
   "summary": {
-    "totalTrades": 2,
-    "buyCount": 0,
-    "sellCount": 2,
-    "takeProfitSells": 1,
-    "stopLossSells": 1,
+    "totalTrades": 9,
+    "buyCount": 5,
+    "sellCount": 4,
+    "takeProfitSells": 2,
+    "stopLossSells": 2,
     "winRate": "50.00",
-    "avgProfit": "2.12",
+    "avgProfit": "2.70",
     "avgLoss": "1.50",
-    "profitLossRatio": "1.41",
-    "totalProfit": "2.12",
-    "totalLoss": "1.50",
-    "netProfit": "0.62"
+    "profitLossRatio": "1.80",
+    "totalProfit": "5.40",
+    "totalLoss": "3.00",
+    "netProfit": "2.40"
   },
   "coinStats": {
+    "NEAR": {
+      "buys": 0,
+      "sells": 1,
+      "profit": 0,
+      "loss": 1
+    },
     "XAUT": {
+      "buys": 1,
+      "sells": 0,
+      "profit": 0,
+      "loss": 0
+    },
+    "USDC": {
+      "buys": 1,
+      "sells": 0,
+      "profit": 0,
+      "loss": 0
+    },
+    "ADA": {
       "buys": 0,
       "sells": 1,
       "profit": 1,
       "loss": 0
     },
-    "BTC": {
-      "buys": 0,
+    "XPL": {
+      "buys": 2,
       "sells": 1,
       "profit": 0,
       "loss": 1
+    },
+    "PAXG": {
+      "buys": 1,
+      "sells": 0,
+      "profit": 0,
+      "loss": 0
+    },
+    "TRX": {
+      "buys": 0,
+      "sells": 1,
+      "profit": 1,
+      "loss": 0
     }
   },
   "today": {
     "date": "2026-03-04",
-    "trades": 2,
-    "buys": 0,
-    "sells": 2,
-    "volume": "0.00"
+    "trades": 9,
+    "buys": 5,
+    "sells": 4,
+    "volume": "185.00"
   },
-  "lastUpdated": "2026-03-04T03:35:08.994Z"
+  "lastUpdated": "2026-03-04T14:10:24.903Z"
 }

@@ -2,5 +2,17 @@
   "BTC": {
     "periods": 2,
     "startTime": 1772594810495
+  },
+  "NEAR": {
+    "periods": 1,
+    "startTime": 1772598606108
+  },
+  "XPL": {
+    "periods": 1,
+    "startTime": 1772629065899
+  },
+  "TRX": {
+    "periods": 3,
+    "startTime": 1772633092043
   }
 }
