@@ -1,0 +1,29 @@
+{
+  "grids": [
+    {
+      "name": "ETH-USDT-积极",
+      "instId": "ETH-USDT",
+      "investment": 40,
+      "minPrice": 1800,
+      "maxPrice": 2200,
+      "gridCount": 15,
+      "status": "active",
+      "createdAt": "2026-02-19T08:49:00+08:00"
+    },
+    {
+      "name": "DOGE-USDT-积极",
+      "instId": "DOGE-USDT",
+      "investment": 10,
+      "minPrice": 0.090,
+      "maxPrice": 0.110,
+      "gridCount": 10,
+      "status": "active",
+      "createdAt": "2026-02-19T08:49:00+08:00"
+    }
+  ],
+  "manualTrading": {
+    "enabled": true,
+    "watchlist": ["BTC", "XRP", "SOL", "DOGE"],
+    "maxPerTrade": 10
+  }
+}

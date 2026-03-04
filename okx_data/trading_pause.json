@@ -1,0 +1,12 @@
+{
+  "paused": false,
+  "reason": "已切换到趋势跟踪策略",
+  "resumedAt": "2026-02-21T15:18:00+08:00",
+  "strategy": "trend_following",
+  "changes": [
+    "清仓WLFI",
+    "启动趋势跟踪策略",
+    "突破20周期高点买入",
+    "动态止盈止损"
+  ]
+}

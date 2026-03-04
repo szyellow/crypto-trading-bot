@@ -1,0 +1,31 @@
+{
+  "ETH": {
+    "instId": "ETH-USDT",
+    "minPrice": 1945,
+    "maxPrice": 1995,
+    "gridNum": 20,
+    "investment": 40,
+    "lastTradePrice": 1923.98,
+    "orders": [],
+    "gridSize": 2.5
+  },
+  "DOGE": {
+    "instId": "DOGE-USDT",
+    "minPrice": 0.095,
+    "maxPrice": 0.1,
+    "gridNum": 15,
+    "investment": 10,
+    "lastTradePrice": 0.09714,
+    "orders": [
+      {
+        "time": "2026-02-19T14:05:32.269Z",
+        "action": "buy",
+        "price": 0.09714,
+        "amount": 100,
+        "ordId": "3322141508365950976",
+        "sentiment": 5
+      }
+    ],
+    "gridSize": 0.00033333333333333365
+  }
+}

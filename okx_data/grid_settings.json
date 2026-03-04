@@ -1,0 +1,41 @@
+{
+  "main": {
+    "instId": "ETH-USDT",
+    "instrument": "ETH-USDT",
+    "gridCount": 10,
+    "gridRange": 0.05,
+    "orderSize": 5,
+    "maxPosition": 50,
+    "sizePerGrid": 5,
+    "minPrice": 1900,
+    "maxPrice": 2300,
+    "trailingPercent": 0.1,
+    "minProfitGap": 0.02
+  },
+  "usdc": {
+    "instId": "ETH-USDC",
+    "instrument": "ETH-USDC",
+    "gridCount": 5,
+    "gridRange": 0.05,
+    "orderSize": 2.5,
+    "maxPosition": 12.31,
+    "sizePerGrid": 2.5,
+    "minPrice": 1900,
+    "maxPrice": 2300,
+    "trailingPercent": 0.1,
+    "minProfitGap": 0.02
+  },
+  "micro": {
+    "instId": "BTC-USDT",
+    "instrument": "BTC-USDT",
+    "gridCount": 20,
+    "gridRange": 0.02,
+    "orderSize": 2,
+    "maxPosition": 39,
+    "sizePerGrid": 2,
+    "minPrice": 65000,
+    "maxPrice": 70000,
+    "trailingPercent": 0.05,
+    "minProfitGap": 0.01
+  }
+}

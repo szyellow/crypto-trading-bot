@@ -1,0 +1,2049 @@
+// ============================================
+// AI自主交易系统 v2.5 - 黑名单放开机制优化版
+// 优化内容：
+// 1. 趋势追踪数据持久化（重启不丢失）
+// 2. 时间衰减机制（24小时后降低门槛）
+// 3. 价格反弹机制（低点反弹5%可解除）
+// 4. 放宽连续要求（累计3次即可，允许间隔）
+// ============================================
+
+const fs = require('fs');
+const { request } = require('./okx-api.js');
+const { evolveStrategy } = require('./strategy-evolution.js');
+const TradeStats = require('./trade-stats.js');
+
+// ============================================
+// 紧急停止检查 - 新增
+// ============================================
+if (fs.existsSync('./EMERGENCY_STOP.flag')) {
+    console.log('🛑 检测到紧急停止标志，系统已停止运行');
+    console.log('如需重启，请先删除 EMERGENCY_STOP.flag 文件');
+    process.exit(0);
+}
+
+// ============================================
+// 加载持久化黑名单 - 新增
+// ============================================
+let PERSISTENT_BLACKLIST = [];
+const BLACKLIST_FILE = './ai_blacklist.json';
+if (fs.existsSync(BLACKLIST_FILE)) {
+    try {
+        PERSISTENT_BLACKLIST = JSON.parse(fs.readFileSync(BLACKLIST_FILE, 'utf8'));
+        console.log('📋 已加载持久化黑名单:', PERSISTENT_BLACKLIST);
+    } catch (e) {
+        console.error('加载黑名单失败:', e.message);
+    }
+}
+
+// ============================================
+// 趋势反转黑名单管理 - v2.5 优化版
+// ============================================
+const BLACKLIST_TREND_FILE = './ai_blacklist_trend.json';
+const BLACKLIST_PRICE_FILE = './ai_blacklist_price.json';
+
+// 加载持久化的趋势追踪数据
+let BLACKLIST_TREND_TRACKER = {};
+if (fs.existsSync(BLACKLIST_TREND_FILE)) {
+    try {
+        BLACKLIST_TREND_TRACKER = JSON.parse(fs.readFileSync(BLACKLIST_TREND_FILE, 'utf8'));
+        console.log('📋 已加载黑名单趋势追踪数据');
+    } catch (e) {
+        console.error('加载趋势追踪数据失败:', e.message);
+    }
+}
+
+// 加载持久化的价格追踪数据（用于价格反弹机制）
+let BLACKLIST_PRICE_TRACKER = {};
+if (fs.existsSync(BLACKLIST_PRICE_FILE)) {
+    try {
+        BLACKLIST_PRICE_TRACKER = JSON.parse(fs.readFileSync(BLACKLIST_PRICE_FILE, 'utf8'));
+        console.log('📋 已加载黑名单价格追踪数据');
+    } catch (e) {
+        console.error('加载价格追踪数据失败:', e.message);
+    }
+}
+
+const BLACKLIST_TREND_THRESHOLD = 8;      // 趋势评分阈值
+const BLACKLIST_TREND_COUNT = 3;          // 累计多少次≥阈值才解除（放宽连续要求）
+const BLACKLIST_TIME_DECAY_HOURS = 24;    // 时间衰减：24小时后降低门槛
+const BLACKLIST_PRICE_BOUNCE_PERCENT = 5; // 价格反弹：从低点反弹5%可解除
+
+// 保存趋势追踪数据到文件
+function saveBlacklistTrendData() {
+    fs.writeFileSync(BLACKLIST_TREND_FILE, JSON.stringify(BLACKLIST_TREND_TRACKER, null, 2));
+}
+
+// 保存价格追踪数据到文件
+function saveBlacklistPriceData() {
+    fs.writeFileSync(BLACKLIST_PRICE_FILE, JSON.stringify(BLACKLIST_PRICE_TRACKER, null, 2));
+}
+
+// 检查黑名单币种是否应该解除 - v2.5 优化版
+function shouldRemoveFromBlacklist(coin, currentTrendScore, currentPrice) {
+    if (!PERSISTENT_BLACKLIST.includes(coin)) return false;
+    
+    const now = Date.now();
+    
+    // 初始化趋势追踪
+    if (!BLACKLIST_TREND_TRACKER[coin]) {
+        BLACKLIST_TREND_TRACKER[coin] = {
+            highTrendCount: 0,
+            lastHighTrendTime: null,
+            addedToBlacklistTime: now
+        };
+    }
+    
+    // 初始化价格追踪（记录黑名单时的价格）
+    if (!BLACKLIST_PRICE_TRACKER[coin]) {
+        BLACKLIST_PRICE_TRACKER[coin] = {
+            blacklistPrice: currentPrice,
+            lowestPrice: currentPrice,
+            addedTime: now
+        };
+        saveBlacklistPriceData();
+    }
+    
+    const trendTracker = BLACKLIST_TREND_TRACKER[coin];
+    const priceTracker = BLACKLIST_PRICE_TRACKER[coin];
+    
+    // 更新最低价格
+    if (currentPrice < priceTracker.lowestPrice) {
+        priceTracker.lowestPrice = currentPrice;
+        saveBlacklistPriceData();
+    }
+    
+    // 计算时间衰减
+    const hoursInBlacklist = (now - trendTracker.addedToBlacklistTime) / (1000 * 60 * 60);
+    const timeDecayBonus = Math.floor(hoursInBlacklist / BLACKLIST_TIME_DECAY_HOURS); // 每24小时降低1分门槛
+    const adjustedThreshold = Math.max(6, BLACKLIST_TREND_THRESHOLD - timeDecayBonus); // 最低门槛6分
+    
+    // 检查价格反弹机制
+    const bouncePercent = ((currentPrice - priceTracker.lowestPrice) / priceTracker.lowestPrice) * 100;
+    if (bouncePercent >= BLACKLIST_PRICE_BOUNCE_PERCENT) {
+        console.log(`✅ ${coin} 价格从低点$${priceTracker.lowestPrice.toFixed(4)}反弹${bouncePercent.toFixed(2)}%（≥${BLACKLIST_PRICE_BOUNCE_PERCENT}%），解除黑名单`);
+        removeFromBlacklist(coin);
+        return true;
+    }
+    
+    // 检查趋势评分机制（放宽连续要求，改为累计）
+    if (currentTrendScore >= adjustedThreshold) {
+        trendTracker.highTrendCount++;
+        trendTracker.lastHighTrendTime = now;
+        saveBlacklistTrendData();
+        
+        console.log(`📈 ${coin} 趋势评分${currentTrendScore}/${adjustedThreshold}(原门槛${BLACKLIST_TREND_THRESHOLD}，时间衰减-${timeDecayBonus})，累计${trendTracker.highTrendCount}/${BLACKLIST_TREND_COUNT}次`);
+        
+        // 累计达到阈值次数，解除黑名单
+        if (trendTracker.highTrendCount >= BLACKLIST_TREND_COUNT) {
+            console.log(`✅ ${coin} 趋势累计${BLACKLIST_TREND_COUNT}次≥${adjustedThreshold}，解除黑名单`);
+            removeFromBlacklist(coin);
+            return true;
+        }
+    }
+    // 移除else重置逻辑 - 允许间隔，不要求严格连续
+    
+    return false;
+}
+
+// 辅助函数：从黑名单中移除
+function removeFromBlacklist(coin) {
+    // 从持久化黑名单中移除
+    const index = PERSISTENT_BLACKLIST.indexOf(coin);
+    if (index > -1) {
+        PERSISTENT_BLACKLIST.splice(index, 1);
+        fs.writeFileSync(BLACKLIST_FILE, JSON.stringify(PERSISTENT_BLACKLIST));
+    }
+    // 清理追踪器
+    delete BLACKLIST_TREND_TRACKER[coin];
+    delete BLACKLIST_PRICE_TRACKER[coin];
+    saveBlacklistTrendData();
+    saveBlacklistPriceData();
+    // 更新配置中的黑名单
+    AI_CONFIG.blacklistedCoins = [...new Set(['BIO', 'KITE', 'HYPE', ...PERSISTENT_BLACKLIST])];
+}
+
+// AI交易配置 - v2.4 保守盈利型
+const AI_CONFIG = {
+    maxPositionPerCoin: 50,      // 单币种最大仓位50%
+    maxDailyTrades: 10,          // 每日最大交易10笔（保守，提高质量）
+    maxDailyVolume: 1000,        // 每日最大交易量$1000
+    stopLossPercent: -2,         // 基础止损-2%（动态调整-1.5%到-3%）
+    takeProfitPercent: 12,       // 止盈线+12%
+    minOrderInterval: 600000,     // 最小下单间隔10分钟
+    sentimentThreshold: 7,       // 舆情买入阈值>7分（不要太严格）
+    sentimentSellThreshold: 3,   // 舆情卖出阈值<3分
+    minCashReserve: 20,          // 最小现金保留20%
+    tradeSize: 50,               // 单笔交易金额$50
+    blacklistedCoins: [...new Set(['BIO', 'KITE', 'HYPE', ...PERSISTENT_BLACKLIST])],
+    maxPositionPercent: 50,      // 单币种最大占比50%
+    buyCooldownMinutes: 30,      // 买入冷却期30分钟
+    
+    // ============================================
+    // 分批止盈配置 - v2.4 保守盈利型
+    // ============================================
+    enablePartialTakeProfit: true,  // 启用分批止盈
+    takeProfitLevels: [              // 2档分批止盈
+        { percent: 5,  sellPercent: 50 },   // 第1档：5%止盈，卖出50%（给上涨空间）
+        { percent: 15, sellPercent: 50 }    // 第2档：15%止盈，卖出50%
+    ],
+    minTpAdjustInterval: 900000     // 最小止盈调整间隔15分钟
+};
+
+// ============================================
+// 止盈订单管理 - 新增
+// ============================================
+let TAKE_PROFIT_ORDERS = {};
+const TP_ORDERS_FILE = './ai_take_profit_orders.json';
+
+// 加载止盈订单记录
+if (fs.existsSync(TP_ORDERS_FILE)) {
+    try {
+        TAKE_PROFIT_ORDERS = JSON.parse(fs.readFileSync(TP_ORDERS_FILE, 'utf8'));
+        console.log('📋 已加载止盈订单记录:', Object.keys(TAKE_PROFIT_ORDERS));
+    } catch (e) {
+        console.error('加载止盈订单记录失败:', e.message);
+    }
+}
+
+// 保存止盈订单记录
+function saveTakeProfitOrders() {
+    fs.writeFileSync(TP_ORDERS_FILE, JSON.stringify(TAKE_PROFIT_ORDERS, null, 2));
+}
+
+// 挂止盈限价单
+async function placeTakeProfitOrder(coin, amount, costPrice, takeProfitPercent) {
+    const tpPrice = costPrice * (1 + takeProfitPercent / 100);
+    const instId = `${coin}-USDT`;
+    
+    console.log(`🎯 挂止盈单: ${coin}`);
+    console.log(`   成本价: $${costPrice.toFixed(4)}`);
+    console.log(`   止盈价: $${tpPrice.toFixed(4)} (+${takeProfitPercent}%)`);
+    console.log(`   数量: ${amount.toFixed(6)}`);
+    
+    try {
+        const result = await request('/api/v5/trade/order', 'POST', {
+            instId: instId,
+            tdMode: 'cash',
+            side: 'sell',
+            ordType: 'limit',
+            sz: amount.toFixed(6),
+            px: tpPrice.toFixed(4)
+        });
+        
+        if (result.code === '0') {
+            const orderId = result.data[0].ordId;
+            console.log(`✅ 止盈单挂单成功！订单ID: ${orderId}`);
+            
+            // 记录止盈单
+            TAKE_PROFIT_ORDERS[coin] = {
+                orderId: orderId,
+                costPrice: costPrice,
+                tpPrice: tpPrice,
+                tpPercent: takeProfitPercent,
+                amount: amount,
+                createdAt: new Date().toISOString(),
+                status: 'live'
+            };
+            saveTakeProfitOrders();
+            
+            return { success: true, orderId: orderId };
+        } else {
+            console.error(`❌ 止盈单挂单失败:`, result.msg);
+            return { success: false, error: result.msg };
+        }
+    } catch (e) {
+        console.error(`❌ 止盈单异常:`, e.message);
+        return { success: false, error: e.message };
+    }
+}
+
+// v2.2 新增：挂分批止盈单（修复：先撤销所有旧订单）
+async function placeMultipleTakeProfitOrders(coin, totalAmount, costPrice) {
+    const levels = AI_CONFIG.takeProfitLevels;
+    console.log(`\n🎯 ${coin} 开始挂分批止盈单，共${levels.length}档`);
+    
+    // 修复：先撤销所有旧订单，避免资金冻结
+    console.log(`  🧹 先清理旧订单...`);
+    await cancelAllPendingOrders(coin);
+    
+    let successCount = 0;
+    const results = [];
+    
+    for (let i = 0; i < levels.length; i++) {
+        const level = levels[i];
+        const sellAmount = totalAmount * (level.sellPercent / 100);
+        
+        console.log(`  第${i+1}档: ${level.percent}% 卖出 ${level.sellPercent}% (${sellAmount.toFixed(6)})`);
+        
+        // 增加API调用延迟
+        if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        const result = await placeTakeProfitOrder(coin, sellAmount, costPrice, level.percent);
+        results.push(result);
+        
+        if (result.success) {
+            successCount++;
+        }
+    }
+    
+    console.log(`\n✅ 分批止盈单挂单完成: ${successCount}/${levels.length}档成功`);
+    
+    return {
+        success: successCount > 0,
+        totalLevels: levels.length,
+        successCount: successCount,
+        results: results
+    };
+}
+
+// 新增：撤销所有pending订单（防止资金冻结）
+async function cancelAllPendingOrders(coin) {
+    try {
+        const result = await request(`/api/v5/trade/orders-pending?instId=${coin}-USDT`, 'GET');
+        
+        if (result.code === '0' && result.data && result.data.length > 0) {
+            console.log(`  发现 ${result.data.length} 个旧订单，开始撤销...`);
+            
+            for (const order of result.data) {
+                console.log(`    撤销订单: ${order.ordId}`);
+                await request('/api/v5/trade/cancel-order', 'POST', {
+                    instId: `${coin}-USDT`,
+                    ordId: order.ordId
+                });
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+            console.log(`  ✅ 已清理所有旧订单`);
+        } else {
+            console.log(`  ✓ 无旧订单需要清理`);
+        }
+    } catch (e) {
+        console.error(`  ⚠️ 清理旧订单失败:`, e.message);
+    }
+}
+
+// 撤销止盈单
+async function cancelTakeProfitOrder(coin) {
+    const tpOrder = TAKE_PROFIT_ORDERS[coin];
+    if (!tpOrder || !tpOrder.orderId) {
+        return { success: false, error: '无止盈单记录' };
+    }
+    
+    console.log(`🔄 撤销止盈单: ${coin}, 订单ID: ${tpOrder.orderId}`);
+    
+    try {
+        const result = await request('/api/v5/trade/cancel-order', 'POST', {
+            instId: `${coin}-USDT`,
+            ordId: tpOrder.orderId
+        });
+        
+        if (result.code === '0') {
+            console.log(`✅ 止盈单撤销成功`);
+            delete TAKE_PROFIT_ORDERS[coin];
+            saveTakeProfitOrders();
+            return { success: true };
+        } else {
+            console.error(`❌ 止盈单撤销失败:`, result.msg);
+            return { success: false, error: result.msg };
+        }
+    } catch (e) {
+        console.error(`❌ 止盈单撤销异常:`, e.message);
+        return { success: false, error: e.message };
+    }
+}
+
+// 调整止盈单 - v2.2 支持多档
+async function adjustTakeProfitOrder(coin, newTpPercent, currentPrice) {
+    const tpData = TAKE_PROFIT_ORDERS[coin];
+    if (!tpData) {
+        console.log(`⚠️ ${coin} 无止盈单，无需调整`);
+        return { success: false, error: '无止盈单' };
+    }
+    
+    // 兼容旧格式（单档）和新格式（多档）
+    const levels = tpData.levels || [tpData];
+    const firstLevel = levels[0];
+    
+    if (!firstLevel || !firstLevel.costPrice) {
+        return { success: false, error: '止盈单数据不完整' };
+    }
+    
+    // 计算新的止盈价格
+    const newTpPrice = firstLevel.costPrice * (1 + newTpPercent / 100);
+    const oldTpPrice = firstLevel.tpPrice;
+    const oldTpPercent = firstLevel.tpPercent;
+    
+    // 如果新价格与旧价格差异不大，不调整
+    const priceDiff = Math.abs(newTpPrice - oldTpPrice) / oldTpPrice;
+    if (priceDiff < 0.005) { // 差异小于0.5%不调整
+        console.log(`⏭️ ${coin} 止盈价格差异${(priceDiff*100).toFixed(2)}%<0.5%，不调整`);
+        return { success: true, noChange: true };
+    }
+    
+    console.log(`🔄 调整止盈单: ${coin}`);
+    console.log(`   原止盈价: $${oldTpPrice.toFixed(4)} (${oldTpPercent}%)`);
+    console.log(`   新止盈价: $${newTpPrice.toFixed(4)} (${newTpPercent}%)`);
+    
+    // 1. 撤销所有旧订单
+    for (const level of levels) {
+        if (level.orderId) {
+            await request('/api/v5/trade/cancel-order', 'POST', {
+                instId: `${coin}-USDT`,
+                ordId: level.orderId
+            });
+        }
+    }
+    
+    // 2. 挂新订单（使用配置中的档位）
+    const totalAmount = levels.reduce((sum, l) => sum + (l.amount || 0), 0);
+    return await placeMultipleTakeProfitOrders(coin, totalAmount, firstLevel.costPrice);
+}
+
+// 检查止盈单状态 - v2.2 支持多档
+async function checkTakeProfitOrderStatus(coin) {
+    const tpData = TAKE_PROFIT_ORDERS[coin];
+    if (!tpData) {
+        return { exists: false };
+    }
+    
+    // 兼容旧格式（单档）和新格式（多档）
+    const levels = tpData.levels || [tpData]; // 如果没有levels，包装成数组
+    
+    try {
+        let anyLive = false;
+        let allFilled = true;
+        const checkedLevels = [];
+        
+        for (const level of levels) {
+            if (!level.orderId) continue;
+            
+            const result = await request(`/api/v5/trade/order?instId=${coin}-USDT&ordId=${level.orderId}`);
+            
+            if (result.code === '0' && result.data && result.data.length > 0) {
+                const order = result.data[0];
+                const status = order.state;
+                
+                checkedLevels.push({
+                    orderId: level.orderId,
+                    status: status,
+                    filledAmount: parseFloat(order.accFillSz || 0),
+                    avgPrice: parseFloat(order.avgPx || 0)
+                });
+                
+                if (status === 'live') {
+                    anyLive = true;
+                    allFilled = false;
+                } else if (status !== 'filled') {
+                    allFilled = false;
+                }
+            } else {
+                allFilled = false;
+            }
+        }
+        
+        // 如果所有档位都不存在，清理记录
+        if (checkedLevels.length === 0) {
+            delete TAKE_PROFIT_ORDERS[coin];
+            saveTakeProfitOrders();
+            return { exists: false };
+        }
+        
+        return {
+            exists: true,
+            levels: checkedLevels,
+            anyLive: anyLive,
+            allFilled: allFilled
+        };
+    } catch (e) {
+        console.error(`检查止盈单状态失败:`, e.message);
+        return { exists: true, error: e.message };
+    }
+}
+
+// 动态波段调整函数
+async function calculateDynamicBands(coin, currentPrice) {
+    try {
+        // 获取24h K线数据计算波动率
+        const candles = await request(`/api/v5/market/candles?instId=${coin}-USDT&bar=1H&limit=24`);
+        if (candles.code !== '0' || !candles.data) {
+            return { stopLoss: AI_CONFIG.stopLossPercent, takeProfit: AI_CONFIG.takeProfitPercent };
+        }
+        
+        const prices = candles.data.map(c => parseFloat(c[4])).reverse();
+        if (prices.length < 10) {
+            return { stopLoss: AI_CONFIG.stopLossPercent, takeProfit: AI_CONFIG.takeProfitPercent };
+        }
+        
+        // 计算24h波动率（标准差/平均值）
+        const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+        const variance = prices.reduce((sum, p) => sum + Math.pow(p - avg, 2), 0) / prices.length;
+        const volatility = Math.sqrt(variance) / avg * 100; // 波动率百分比
+        
+        // 获取24h涨跌幅
+        const ticker = await request(`/api/v5/market/ticker?instId=${coin}-USDT`);
+        const change24h = ticker.code === '0' ? parseFloat(ticker.data[0].change24h) : 0;
+        
+        // 获取市值信息（通过成交量估算）
+        const vol24h = ticker.code === '0' ? parseFloat(ticker.data[0].vol24h) : 0;
+        const marketCapLevel = vol24h > 1000000000 ? 'large' : vol24h > 100000000 ? 'medium' : 'small'; // 大/中/小市值
+        
+        // 计算波动系数 (0.5 ~ 2.0)
+        // 波动率越高，系数越大
+        let volatilityFactor = Math.min(2.0, Math.max(0.5, volatility / 3));
+        
+        // 市值系数 (0.6 ~ 1.2)
+        // 小市值币种需要更小的波段
+        let marketCapFactor = marketCapLevel === 'large' ? 1.2 : marketCapLevel === 'medium' ? 1.0 : 0.6;
+        
+        // 趋势系数 (0.8 ~ 1.2)
+        // 强趋势时扩大波段
+        let trendFactor = Math.abs(change24h) > 10 ? 1.2 : Math.abs(change24h) > 5 ? 1.0 : 0.8;
+        
+        // 计算动态止损止盈
+        // 基础值：止损-3%，止盈+6%
+        const baseStopLoss = -3;
+        const baseTakeProfit = 6;
+        
+        let dynamicStopLoss = baseStopLoss * volatilityFactor * marketCapFactor * trendFactor;
+        let dynamicTakeProfit = baseTakeProfit * volatilityFactor * marketCapFactor * trendFactor;
+        
+        // 限制范围
+        dynamicStopLoss = Math.max(-8, Math.min(-1, dynamicStopLoss)); // 止损范围：-8% ~ -1%
+        dynamicTakeProfit = Math.max(2, Math.min(15, dynamicTakeProfit)); // 止盈范围：2% ~ 15%
+        
+        console.log(`  📊 ${coin} 动态波段计算:`);
+        console.log(`     波动率: ${volatility.toFixed(2)}%, 24h涨跌: ${change24h.toFixed(2)}%`);
+        console.log(`     市值级别: ${marketCapLevel}, 波动系数: ${volatilityFactor.toFixed(2)}`);
+        console.log(`     市值系数: ${marketCapFactor.toFixed(2)}, 趋势系数: ${trendFactor.toFixed(2)}`);
+        console.log(`     动态止损: ${dynamicStopLoss.toFixed(2)}%, 动态止盈: ${dynamicTakeProfit.toFixed(2)}%`);
+        
+        return {
+            stopLoss: dynamicStopLoss,
+            takeProfit: dynamicTakeProfit,
+            volatility,
+            marketCapLevel,
+            factors: { volatilityFactor, marketCapFactor, trendFactor }
+        };
+    } catch(e) {
+        console.error(`计算${coin}动态波段失败:`, e.message);
+        return { stopLoss: AI_CONFIG.stopLossPercent, takeProfit: AI_CONFIG.takeProfitPercent };
+    }
+}
+
+// 交易日志
+let tradeLog = {
+    date: new Date().toISOString().split('T')[0],
+    trades: [],
+    dailyVolume: 0,
+    dailyTradeCount: 0,
+    lastBuyTime: {}  // 记录每个币种的最后买入时间
+};
+
+// 加载历史日志
+if (fs.existsSync('ai_trade_log.json')) {
+    tradeLog = JSON.parse(fs.readFileSync('ai_trade_log.json', 'utf8'));
+    // 检查是否是新的一天
+    const today = new Date().toISOString().split('T')[0];
+    if (tradeLog.date !== today) {
+        tradeLog = { date: today, trades: [], dailyVolume: 0, dailyTradeCount: 0, lastBuyTime: {} };
+    }
+}
+
+// 检查买入冷却期
+function checkBuyCooldown(coin) {
+    const lastBuyTime = tradeLog.lastBuyTime && tradeLog.lastBuyTime[coin];
+    if (!lastBuyTime) return { canBuy: true, remainingMinutes: 0 };
+    
+    const lastBuy = new Date(lastBuyTime);
+    const now = new Date();
+    const diffMinutes = (now - lastBuy) / (1000 * 60);
+    
+    if (diffMinutes < AI_CONFIG.buyCooldownMinutes) {
+        const remaining = Math.ceil(AI_CONFIG.buyCooldownMinutes - diffMinutes);
+        return { canBuy: false, remainingMinutes: remaining };
+    }
+    
+    return { canBuy: true, remainingMinutes: 0 };
+}
+
+// 获取所有可交易币种
+async function getAllTradableCoins() {
+    try {
+        const tickers = await request('/api/v5/market/tickers?instType=SPOT');
+        if (tickers.code !== '0') return [];
+        
+        // 筛选 USDT 交易对，且24h成交量>100万USDT的活跃币种
+        const activeCoins = tickers.data
+            .filter(t => t.instId.endsWith('-USDT'))
+            .filter(t => parseFloat(t.vol24h) * parseFloat(t.last) > 1000000) // 24h成交额>100万
+            .filter(t => parseFloat(t.last) > 0.01) // 价格>0.01
+            .sort((a, b) => parseFloat(b.vol24h) * parseFloat(b.last) - parseFloat(a.vol24h) * parseFloat(a.last)) // 按成交额排序
+            .slice(0, 20); // 取前20个最活跃的
+        
+        return activeCoins.map(t => ({
+            symbol: t.instId.replace('-USDT', ''),
+            instId: t.instId,
+            price: parseFloat(t.last),
+            vol24h: parseFloat(t.vol24h),
+            change24h: parseFloat(t.open24h) > 0 ? ((parseFloat(t.last) - parseFloat(t.open24h)) / parseFloat(t.open24h) * 100) : 0
+        }));
+    } catch(e) {
+        console.error('获取可交易币种失败:', e.message);
+        return [];
+    }
+}
+
+// 分析币种趋势 - 增强版（趋势追踪网格策略）
+async function analyzeTrend(instId) {
+    try {
+        // 获取K线数据 - 使用15分钟线获取更多细节
+        const candles15m = await request(`/api/v5/market/candles?instId=${instId}&bar=15m&limit=48`);
+        const candles1h = await request(`/api/v5/market/candles?instId=${instId}&bar=1H&limit=24`);
+        
+        if (candles15m.code !== '0' || !candles15m.data || candles15m.data.length < 20) {
+            return { score: 5, trend: 'neutral' };
+        }
+        
+        // 解析数据
+        const data15m = candles15m.data.map(c => ({
+            open: parseFloat(c[1]),
+            high: parseFloat(c[2]),
+            low: parseFloat(c[3]),
+            close: parseFloat(c[4]),
+            vol: parseFloat(c[5])
+        })).reverse();
+        
+        const prices15m = data15m.map(d => d.close);
+        const volumes15m = data15m.map(d => d.vol);
+        
+        // ========== 技术指标计算 ==========
+        
+        // 1. 多周期均线
+        const ma5 = calculateMA(prices15m, 5);
+        const ma10 = calculateMA(prices15m, 10);
+        const ma20 = calculateMA(prices15m, 20);
+        
+        // 2. 成交量均线
+        const volMa5 = calculateMA(volumes15m, 5);
+        const volMa10 = calculateMA(volumes15m, 10);
+        
+        // 3. 成交量金叉判断
+        const volumeGoldenCross = volMa5 > volMa10 * 1.05 && volumes15m[volumes15m.length - 1] > volMa5;
+        const volumeIncreasing = volumes15m.slice(-3).every((v, i, arr) => i === 0 || v >= arr[i-1] * 0.9);
+        
+        // 4. MACD计算
+        const macd = calculateMACD(prices15m);
+        const macdGoldenCross = macd.macd > macd.signal && macd.histogram > 0 && macd.histogram > macd.prevHistogram;
+        
+        // 5. RSI计算
+        const rsi = calculateRSI(prices15m, 14);
+        
+        // 6. 布林带
+        const bollinger = calculateBollinger(prices15m, 20);
+        const pricePosition = (prices15m[prices15m.length - 1] - bollinger.lower) / (bollinger.upper - bollinger.lower);
+        
+        // 7. 波动率
+        const volatility = calculateVolatility(prices15m);
+        
+        // 8. 近期价格变化
+        const recentChange = (prices15m[prices15m.length - 1] - prices15m[prices15m.length - 5]) / prices15m[prices15m.length - 5] * 100;
+        
+        // ========== 趋势评分逻辑 ==========
+        let score = 5;
+        let trend = 'neutral';
+        const signals = [];
+        
+        // 1. 均线多头排列 (MA5 > MA10 > MA20)
+        if (ma5 > ma10 && ma10 > ma20) {
+            score += 2;
+            signals.push('均线多头排列');
+            trend = 'bullish';
+        } else if (ma5 < ma10 && ma10 < ma20) {
+            score -= 2;
+            signals.push('均线空头排列');
+            trend = 'bearish';
+        } else if (ma5 > ma10) {
+            score += 1;
+            signals.push('短期均线上穿');
+            trend = 'bullish';
+        }
+        
+        // 2. 成交量金叉 (重要信号)
+        if (volumeGoldenCross) {
+            score += 2;
+            signals.push('成交量金叉');
+        } else if (volumeIncreasing) {
+            score += 1;
+            signals.push('成交量递增');
+        }
+        
+        // 3. MACD金叉
+        if (macdGoldenCross) {
+            score += 2;
+            signals.push('MACD金叉');
+        } else if (macd.macd > macd.signal) {
+            score += 1;
+            signals.push('MACD多头');
+        }
+        
+        // 4. RSI判断
+        if (rsi > 50 && rsi < 70) {
+            score += 1;
+            signals.push('RSI强势区');
+        } else if (rsi > 70) {
+            score -= 1;
+            signals.push('RSI超买');
+        } else if (rsi < 30) {
+            score -= 1;
+            signals.push('RSI超卖');
+        }
+        
+        // 5. 布林带位置
+        if (pricePosition > 0.5 && pricePosition < 0.8) {
+            score += 1;
+            signals.push('价格中轨偏上');
+        } else if (pricePosition > 0.8) {
+            score -= 1;
+            signals.push('价格接近上轨');
+        } else if (pricePosition < 0.2) {
+            score += 1;
+            signals.push('价格接近下轨(反弹机会)');
+        }
+        
+        // 6. 近期涨幅 (温和上涨加分，暴涨扣分)
+        if (recentChange > 2 && recentChange < 8) {
+            score += 1;
+            signals.push(`温和上涨${recentChange.toFixed(1)}%`);
+        } else if (recentChange > 8 && recentChange < 15) {
+            score += 0;
+            signals.push(`快速上涨${recentChange.toFixed(1)}%`);
+        } else if (recentChange > 15) {
+            score -= 2;
+            signals.push(`暴涨${recentChange.toFixed(1)}%(风险)`);
+        } else if (recentChange < -5) {
+            score -= 1;
+            signals.push(`下跌${recentChange.toFixed(1)}%`);
+        }
+        
+        // 7. 波动率适中加分
+        if (volatility > 1.5 && volatility < 6) {
+            score += 1;
+            signals.push('波动率适中');
+        } else if (volatility > 10) {
+            score -= 1;
+            signals.push('波动率过高');
+        }
+        
+        // ========== 多时间框架确认（新增）==========
+        let timeframeConfirm = 0; // 多时间框架确认分数
+        
+        // 1小时趋势分析
+        if (candles1h.code === '0' && candles1h.data && candles1h.data.length >= 20) {
+            const data1h = candles1h.data.map(c => ({
+                close: parseFloat(c[4])
+            })).reverse();
+            const prices1h = data1h.map(d => d.close);
+            
+            const ma5_1h = calculateMA(prices1h, 5);
+            const ma10_1h = calculateMA(prices1h, 10);
+            const ma20_1h = calculateMA(prices1h, 20);
+            
+            // 1h均线多头排列确认
+            if (ma5_1h > ma10_1h && ma10_1h > ma20_1h) {
+                timeframeConfirm += 1;
+                signals.push('1h趋势确认看涨');
+            } else if (ma5_1h < ma10_1h && ma10_1h < ma20_1h) {
+                timeframeConfirm -= 1;
+                signals.push('1h趋势确认看跌');
+            }
+        }
+        
+        // 多时间框架过滤：如果1h和15m趋势矛盾，降低评分
+        if (timeframeConfirm > 0 && trend === 'bullish') {
+            score += 1; // 双重确认，加分
+        } else if (timeframeConfirm < 0 && trend === 'bullish') {
+            score -= 2; // 趋势矛盾，大幅扣分
+            signals.push('多时间框架矛盾(1h看跌)');
+        } else if (timeframeConfirm < 0 && trend === 'bearish') {
+            score -= 1; // 双重确认看跌
+        }
+        
+        // 综合判断趋势
+        if (score >= 8) {
+            trend = 'bullish';
+        } else if (score <= 3) {
+            trend = 'bearish';
+        }
+        
+        return { 
+            score: Math.max(1, Math.min(10, score)), 
+            trend,
+            volatility,
+            recentChange,
+            signals,
+            indicators: {
+                ma5, ma10, ma20,
+                rsi: rsi.toFixed(1),
+                macd: macd.macd.toFixed(4),
+                volumeGoldenCross,
+                macdGoldenCross,
+                pricePosition: pricePosition.toFixed(2)
+            }
+        };
+    } catch(e) {
+        console.error(`分析${instId}趋势失败:`, e.message);
+        return { score: 5, trend: 'neutral', signals: [], indicators: {} };
+    }
+}
+
+// 计算均线
+function calculateMA(data, period) {
+    if (data.length < period) return data[data.length - 1];
+    const sum = data.slice(-period).reduce((a, b) => a + b, 0);
+    return sum / period;
+}
+
+// 计算MACD
+function calculateMACD(prices, fast = 12, slow = 26, signal = 9) {
+    const emaFast = calculateEMA(prices, fast);
+    const emaSlow = calculateEMA(prices, slow);
+    const macdLine = emaFast - emaSlow;
+    
+    // 简化计算：使用MACD的EMA作为信号线
+    const macdSeries = [];
+    for (let i = slow; i < prices.length; i++) {
+        const fastEma = calculateEMA(prices.slice(0, i + 1), fast);
+        const slowEma = calculateEMA(prices.slice(0, i + 1), slow);
+        macdSeries.push(fastEma - slowEma);
+    }
+    
+    const signalLine = calculateEMA(macdSeries, signal);
+    const histogram = macdLine - signalLine;
+    const prevHistogram = macdSeries.length > 1 ? macdSeries[macdSeries.length - 2] - calculateEMA(macdSeries.slice(0, -1), signal) : histogram;
+    
+    return {
+        macd: macdLine,
+        signal: signalLine,
+        histogram,
+        prevHistogram
+    };
+}
+
+// 计算EMA
+function calculateEMA(data, period) {
+    if (data.length < period) return data[data.length - 1];
+    const k = 2 / (period + 1);
+    let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < data.length; i++) {
+        ema = data[i] * k + ema * (1 - k);
+    }
+    return ema;
+}
+
+// 计算RSI
+function calculateRSI(prices, period = 14) {
+    if (prices.length < period + 1) return 50;
+    
+    let gains = 0;
+    let losses = 0;
+    
+    for (let i = prices.length - period; i < prices.length; i++) {
+        const change = prices[i] - prices[i - 1];
+        if (change > 0) gains += change;
+        else losses -= change;
+    }
+    
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
+}
+
+// 计算布林带
+function calculateBollinger(prices, period = 20) {
+    if (prices.length < period) {
+        const price = prices[prices.length - 1];
+        return { upper: price * 1.02, middle: price, lower: price * 0.98 };
+    }
+    
+    const slice = prices.slice(-period);
+    const middle = slice.reduce((a, b) => a + b, 0) / period;
+    const variance = slice.reduce((sum, p) => sum + Math.pow(p - middle, 2), 0) / period;
+    const stdDev = Math.sqrt(variance);
+    
+    return {
+        upper: middle + 2 * stdDev,
+        middle,
+        lower: middle - 2 * stdDev
+    };
+}
+
+// 计算波动率
+function calculateVolatility(prices) {
+    if (prices.length < 2) return 0;
+    const changes = [];
+    for (let i = 1; i < prices.length; i++) {
+        changes.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+    }
+    const mean = changes.reduce((a, b) => a + b, 0) / changes.length;
+    const variance = changes.reduce((sum, c) => sum + Math.pow(c - mean, 2), 0) / changes.length;
+    return Math.sqrt(variance) * 100;
+}
+
+// 获取账户数据
+async function getAccountData() {
+    try {
+        const balance = await request('/api/v5/account/balance');
+        const details = balance.data[0].details;
+        
+        let totalEquity = parseFloat(balance.data[0].totalEq);
+        let usdtAvailable = 0;
+        let positions = {};
+        
+        details.forEach(d => {
+            if (d.ccy === 'USDT') {
+                usdtAvailable = parseFloat(d.availBal);
+            }
+            // 修复：使用 eqUsd (美元价值) > 0.5 作为持仓判断标准（降低阈值，确保小额持仓被识别）
+            if (parseFloat(d.eqUsd) > 0.5 && d.ccy !== 'USDT') {
+                // 使用 spotBal（现货余额）作为可交易数量
+                const spotBalance = parseFloat(d.spotBal) || parseFloat(d.eq);
+                // 修复成本计算：使用 openAvgPx 或 accAvgPx
+                const avgCostPrice = parseFloat(d.openAvgPx) > 0 ? parseFloat(d.openAvgPx) : (parseFloat(d.accAvgPx) || 0);
+                positions[d.ccy] = {
+                    amount: spotBalance,
+                    value: parseFloat(d.eqUsd),
+                    avgPrice: avgCostPrice
+                };
+            }
+        });
+        
+        return { totalEquity, usdtAvailable, positions };
+    } catch(e) {
+        console.error('获取账户数据失败:', e.message);
+        return null;
+    }
+}
+
+// 获取市场价格
+async function getMarketPrice(instId) {
+    try {
+        const ticker = await request(`/api/v5/market/ticker?instId=${instId}`);
+        return parseFloat(ticker.data[0].last);
+    } catch(e) {
+        console.error(`获取${instId}价格失败:`, e.message);
+        return null;
+    }
+}
+
+// AI决策引擎
+async function makeDecision(coin, position, currentPrice, sentiment, account) {
+    const { totalEquity, usdtAvailable, positions } = account;
+    
+    console.log(`\n🤖 AI分析 ${coin}...`);
+    console.log(`  当前价格: $${currentPrice}`);
+    const trendText = sentiment.trend === 'bullish' ? '看涨' : sentiment.trend === 'bearish' ? '看跌' : '横盘';
+    console.log(`  趋势评分: ${sentiment.score}/10 (${trendText})`);
+    
+    // 检查买入冷却期 - 修复：添加return阻止买入
+    const cooldown = checkBuyCooldown(coin);
+    if (!cooldown.canBuy) {
+        console.log(`  ⏳ ${coin} 冷却期中，还需${cooldown.remainingMinutes}分钟`);
+        return { action: 'hold', reason: `冷却期中，还需${cooldown.remainingMinutes}分钟` };
+    }
+    
+    // 检查持仓
+    const pos = positions[coin];
+    const positionValue = pos ? pos.value : 0;
+    const positionPercent = totalEquity > 0 ? (positionValue / totalEquity * 100) : 0;
+    
+    console.log(`  当前持仓: ${positionValue.toFixed(2)} USD (${positionPercent.toFixed(1)}%)`);
+    console.log(`  可用USDT: ${usdtAvailable.toFixed(2)}`);
+    
+    // 计算动态波段
+    const dynamicBands = await calculateDynamicBands(coin, currentPrice);
+    const stopLossPercent = dynamicBands.stopLoss;
+    const takeProfitPercent = dynamicBands.takeProfit;
+    
+    // 决策逻辑
+    let decision = { action: 'hold', reason: '' };
+    
+    // 智能止损：根据趋势评分调整止损线（已放宽）
+    let smartStopLoss = stopLossPercent;
+    if (sentiment.score >= 8) {
+        smartStopLoss = -3.0; // 趋势强，放宽止损至-3%
+        console.log(`  🛡️ 智能止损：趋势评分${sentiment.score}/10，放宽止损至-3%`);
+    } else if (sentiment.score >= 6) {
+        smartStopLoss = -2.0; // 趋势中等，止损-2%
+        console.log(`  🛡️ 智能止损：趋势评分${sentiment.score}/10，止损-2%`);
+    } else {
+        smartStopLoss = -1.5; // 趋势弱，止损-1.5%
+        console.log(`  🛡️ 智能止损：趋势评分${sentiment.score}/10，止损-1.5%`);
+    }
+    
+    // 1. 如果有持仓，检查止盈止损和补仓机会
+    if (pos && pos.amount > 0 && pos.avgPrice > 0) {
+        const pnlPercent = (currentPrice - pos.avgPrice) / pos.avgPrice * 100;
+        const pnlValue = (currentPrice - pos.avgPrice) * pos.amount;
+        console.log(`  持仓数量: ${pos.amount.toFixed(6)} 个`);
+        console.log(`  持仓成本: $${pos.avgPrice.toFixed(4)}`);
+        console.log(`  当前价格: $${currentPrice.toFixed(4)}`);
+        console.log(`  持仓盈亏: ${pnlPercent.toFixed(2)}% ($${pnlValue.toFixed(2)})`);
+        console.log(`  动态止损: ${smartStopLoss.toFixed(2)}%, 动态止盈: ${takeProfitPercent.toFixed(2)}%`);
+        
+        // 智能止损 - 根据趋势评分决定是否止损
+        if (pnlPercent <= smartStopLoss) {
+            // 如果趋势评分很高，考虑补仓而不是止损
+            if (sentiment.score >= 8 && positionPercent < 15 && usdtAvailable >= AI_CONFIG.tradeAmount) {
+                // 补仓降低成本
+                const buyAmount = Math.min(AI_CONFIG.tradeAmount, usdtAvailable * 0.5);
+                decision = { 
+                    action: 'buy', 
+                    reason: `智能补仓！亏损${pnlPercent.toFixed(2)}%但趋势评分${sentiment.score}/10强劲，补仓降低成本`,
+                    amount: buyAmount
+                };
+                return decision;
+            }
+            
+            // 否则执行止损
+            const sellAmount = pos.amount * 0.995;
+            decision = { 
+                action: 'sell', 
+                reason: `触发智能止损！亏损${pnlPercent.toFixed(2)}% (止损线${smartStopLoss.toFixed(2)}%)，加入黑名单`,
+                amount: sellAmount,
+                addToBlacklist: true
+            };
+            return decision;
+        }
+        
+        // 止盈 - 使用动态计算的止盈线（趋势追踪网格逻辑）
+        if (pnlPercent >= takeProfitPercent) {
+            // 留出0.5%余量，避免精度问题导致卖出失败
+            const sellAmount = pos.amount * 0.995;
+            decision = { 
+                action: 'sell', 
+                reason: `触发动态止盈！盈利${pnlPercent.toFixed(2)}% >= 止盈线${takeProfitPercent.toFixed(2)}%，及时高抛`,
+                amount: sellAmount  // 卖出99.5%，留出余量
+            };
+            return decision;
+        }
+        
+        // 小盈减仓：盈利>=动态止盈线的一半且持仓占比>15%，及时减仓
+        if (pnlPercent >= (takeProfitPercent / 2) && positionPercent > 15) {
+            const sellAmount = pos.amount * 0.5;  // 卖出一半
+            decision = { 
+                action: 'sell', 
+                reason: `小盈减仓！盈利${pnlPercent.toFixed(2)}%>=${(takeProfitPercent/2).toFixed(2)}%且占比${positionPercent.toFixed(1)}%>15%，先抛一半`,
+                amount: sellAmount
+            };
+            return decision;
+        }
+        
+        // 超仓减仓：持仓占比过高时，强制减仓（降低集中度至20%）
+        // 修复：先检查止盈单，确保有止盈保护再减仓
+        if (positionPercent > 30) {
+            // 先确保有止盈单保护
+            if (!TAKE_PROFIT_ORDERS[coin]) {
+                console.log(`  ⚠️ ${coin} 超仓但无止盈单，先挂止盈单再减仓...`);
+                // 返回特殊标记，让主循环先挂止盈单
+                decision = { 
+                    action: 'hold', 
+                    reason: `超仓保护！占比${positionPercent.toFixed(1)}%过高，需先挂止盈单`,
+                    needTakeProfit: true // 标记需要挂止盈单
+                };
+                return decision;
+            }
+            
+            const reducePercent = Math.min(15, (positionPercent - 20)); // 减仓至20%
+            const reduceAmount = pos.amount * (reducePercent / positionPercent);
+            decision = { 
+                action: 'sell', 
+                reason: `超仓减仓！占比${positionPercent.toFixed(1)}%过高，强制减仓至20%`,
+                amount: reduceAmount
+            };
+            return decision;
+        }
+        
+        // 舆情极差，提前卖出 - 修改为调整止盈单
+        if (sentiment.score < AI_CONFIG.sentimentSellThreshold && pnlPercent > -2) {
+            // 如果有止盈单，调整止盈价格（收紧止盈）
+            if (TAKE_PROFIT_ORDERS[coin]) {
+                console.log(`  🎯 舆情极差(${sentiment.score}分)，收紧止盈单...`);
+                // 不立即卖出，而是依赖止盈单成交
+                // 止盈单会在主循环中被调整为更保守的价格
+                decision = { 
+                    action: 'hold', 
+                    reason: `舆情极差(${sentiment.score}分)，已收紧止盈单，等待成交`
+                };
+            } else {
+                // 无止盈单时，才市价卖出
+                decision = { 
+                    action: 'sell', 
+                    reason: `舆情极差(${sentiment.score}分)，提前止盈`,
+                    amount: pos.amount * 0.995
+                };
+            }
+            return decision;
+        }
+    }
+    
+    // 2. 检查是否满足买入条件
+    // 检查日交易限制
+    if (tradeLog.dailyTradeCount >= AI_CONFIG.maxDailyTrades) {
+        decision = { action: 'hold', reason: '已达每日最大交易次数' };
+        return decision;
+    }
+    
+    if (tradeLog.dailyVolume >= AI_CONFIG.maxDailyVolume) {
+        decision = { action: 'hold', reason: '已达每日最大交易量' };
+        return decision;
+    }
+    
+    // 检查超仓保护：单币种占比超过25%禁止买入（降低集中度）
+    if (positionPercent >= AI_CONFIG.maxPositionPercent) {
+        decision = { action: 'hold', reason: `超仓保护！当前占比${positionPercent.toFixed(1)}%已达上限(${AI_CONFIG.maxPositionPercent}%)` };
+        return decision;
+    }
+    
+    // 检查黑名单：持续亏损的币种禁止买入
+    // 新增：趋势反转检查 - v2.5 优化版（支持时间衰减和价格反弹）
+    if (AI_CONFIG.blacklistedCoins.includes(coin)) {
+        // 检查是否应该解除黑名单（趋势反转）
+        const trendScore = await analyzeTrend(coin, currentPrice);
+        const shouldRemove = shouldRemoveFromBlacklist(coin, trendScore.score, currentPrice);
+        
+        if (shouldRemove) {
+            console.log(`  ✅ ${coin} 已从黑名单移除，允许重新买入`);
+            // 更新配置中的黑名单（已在函数内更新）
+        } else {
+            const tracker = BLACKLIST_TREND_TRACKER[coin] || { highTrendCount: 0 };
+            const hoursInBlacklist = tracker.addedToBlacklistTime ? 
+                ((Date.now() - tracker.addedToBlacklistTime) / (1000 * 60 * 60)).toFixed(1) : '未知';
+            const priceTracker = BLACKLIST_PRICE_TRACKER[coin];
+            const bounceInfo = priceTracker ? 
+                `价格反弹${((currentPrice - priceTracker.lowestPrice) / priceTracker.lowestPrice * 100).toFixed(2)}%` : '';
+            decision = { action: 'hold', reason: `${coin}在黑名单中(${hoursInBlacklist}小时)。趋势评分${trendScore.score}，累计${tracker.highTrendCount}/${BLACKLIST_TREND_COUNT}次。${bounceInfo}` };
+            return decision;
+        }
+    }
+    
+    // 检查连续加仓限制：已有持仓且占比>30%的币种，禁止继续买入（放宽限制，提高资金利用率）
+    if (positionPercent > 30) {
+        decision = { action: 'hold', reason: `${coin}已有持仓且占比${positionPercent.toFixed(1)}%>30%，禁止连续加仓` };
+        return decision;
+    }
+    
+    // 检查资金
+    if (usdtAvailable < AI_CONFIG.tradeSize) {
+        decision = { action: 'hold', reason: 'USDT不足' };
+        return decision;
+    }
+    
+    // 检查现金保留比例
+    const cashPercent = totalEquity > 0 ? (usdtAvailable / totalEquity * 100) : 0;
+    if (cashPercent < AI_CONFIG.minCashReserve) {
+        decision = { action: 'hold', reason: '现金保留比例不足' };
+        return decision;
+    }
+    
+    // 检查仓位限制
+    if (positionPercent >= AI_CONFIG.maxPositionPerCoin) {
+        decision = { action: 'hold', reason: '已达最大仓位限制' };
+        return decision;
+    }
+    
+    // 3. 舆情驱动买入
+    if (sentiment.score >= AI_CONFIG.sentimentThreshold) {
+        decision = { 
+            action: 'buy', 
+            reason: `舆情利好(${sentiment.score}分)，买入${AI_CONFIG.tradeSize} USDT`,
+            amount: AI_CONFIG.tradeSize / currentPrice
+        };
+        return decision;
+    }
+    
+    // 4. 默认持有
+    decision = { action: 'hold', reason: '条件不满足，继续持有' };
+    return decision;
+}
+
+// 执行交易（带重试机制）
+async function executeTrade(instId, side, amount, price, maxRetries = 5, usdtAmount = null) {
+    let lastError = null;
+    
+    // 对于买入操作，确保按USDT金额下单
+    const isBuy = side === 'buy';
+    
+    // 修复：确保usdtAmount正确传递，默认为AI_CONFIG.tradeSize
+    let orderUsdtAmount;
+    if (isBuy) {
+        orderUsdtAmount = usdtAmount || AI_CONFIG.tradeSize;
+        // 验证买入金额
+        if (orderUsdtAmount <= 0) {
+            console.error(`❌ 买入金额无效: ${orderUsdtAmount} USDT`);
+            return null;
+        }
+        if (orderUsdtAmount > AI_CONFIG.tradeSize * 1.01) {
+            console.error(`❌ 买入金额超标！计划${orderUsdtAmount} USDT，限制${AI_CONFIG.tradeSize} USDT`);
+            return null;
+        }
+        console.log(`💰 计划买入金额: ${orderUsdtAmount.toFixed(2)} USDT`);
+    } else {
+        orderUsdtAmount = amount * price;
+    }
+    
+    // 检查账户余额是否足够（卖出时）
+    if (side === 'sell') {
+        try {
+            const balance = await request('/api/v5/account/balance');
+            const coin = instId.replace('-USDT', '');
+            const coinBalance = balance.data[0].details.find(d => d.ccy === coin);
+            const available = coinBalance ? parseFloat(coinBalance.availBal) : 0;
+            
+            if (available < amount) {
+                console.log(`⚠️ 账户余额不足，调整卖出数量: ${amount.toFixed(6)} -> ${available.toFixed(6)}`);
+                amount = available * 0.995; // 留出余量
+            }
+        } catch(e) {
+            console.error('检查余额失败:', e.message);
+        }
+    }
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`🎯 尝试市价${side} (第${attempt}/${maxRetries}次)...`);
+            console.log(`   数量: ${amount.toFixed(6)}, 预估金额: ~${(amount * price).toFixed(2)} USDT`);
+            
+            // 增加请求间隔，避免频率限制
+            if (attempt > 1) {
+                const waitTime = 3000 + (attempt * 1000); // 3秒、4秒、5秒...
+                console.log(`⏳ 等待${waitTime/1000}秒后重试...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+            
+            // 买入使用市价单优先，失败后再用限价单
+            let orderBody;
+            let orderType;
+            
+            if (side === 'buy') {
+                // 买入：先尝试市价单
+                // OKX市价单买入时，sz参数表示USDT金额（单位：USDT）
+                orderType = 'market';
+                
+                // 修复：确保sz是字符串格式，且不小于OKX最小下单金额
+                const szValue = Math.max(orderUsdtAmount, 1).toString(); // 最小1 USDT
+                
+                orderBody = {
+                    instId: instId,
+                    tdMode: 'cash',
+                    side: side,
+                    ordType: 'market',
+                    sz: szValue  // 使用USDT金额，转为字符串
+                };
+                console.log(`🎯 使用市价单买入 ${orderUsdtAmount.toFixed(2)} USDT (sz=${szValue})`);
+            } else {
+                // 卖出：使用市价单，sz表示币种数量
+                orderType = 'market';
+                orderBody = {
+                    instId: instId,
+                    tdMode: 'cash',
+                    side: side,
+                    ordType: 'market',
+                    sz: amount.toFixed(6)  // 卖出时使用币种数量
+                };
+                console.log(`🎯 使用市价单卖出 ${amount.toFixed(6)} 个`);
+            }
+            
+            const orderResult = await request('/api/v5/trade/order', 'POST', orderBody);
+            
+            if (orderResult.code === '0') {
+                console.log(`✅ 市价单成功！订单ID:`, orderResult.data[0].ordId);
+                // 成功后等待1秒让数据同步
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return orderResult;
+            }
+            
+            // 市价单失败，检查错误类型
+            console.error(`⚠️ 市价单失败:`, orderResult.msg);
+            
+            // 如果是余额不足，不再重试
+            if (orderResult.msg && orderResult.msg.includes('insufficient')) {
+                console.error('❌ 余额不足，停止重试');
+                return null;
+            }
+            
+            // 市价单失败，转限价单（仅买入时）
+            if (side === 'buy') {
+                console.log('🔄 市价单失败，转限价单...');
+                const limitPrice = (price * 1.002).toFixed(6); // 买入价+0.2%
+                // 限价单买入时，sz表示币种数量，需要根据USDT金额计算
+                const limitAmount = (orderUsdtAmount / parseFloat(limitPrice)).toFixed(6);
+                
+                const limitBody = {
+                    instId: instId,
+                    tdMode: 'cash',
+                    side: side,
+                    ordType: 'limit',
+                    sz: limitAmount,  // 限价单使用币种数量
+                    px: limitPrice
+                };
+                
+                console.log(`🎯 限价单买入: ${limitAmount} 个 @ ${limitPrice} USDT (~${orderUsdtAmount.toFixed(2)} USDT)`);
+                
+                const limitResult = await request('/api/v5/trade/order', 'POST', limitBody);
+                
+                if (limitResult.code === '0') {
+                    console.log('✅ 限价单成功！订单ID:', limitResult.data[0].ordId);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    return limitResult;
+                } else {
+                    console.error(`❌ 限价单失败:`, limitResult.msg);
+                    lastError = limitResult.msg;
+                }
+            } else {
+                lastError = orderResult.msg;
+            }
+        } catch(e) {
+            console.error(`❌ 第${attempt}次尝试异常:`, e.message);
+            lastError = e.message;
+        }
+    }
+    
+    console.error(`❌ ${maxRetries}次尝试全部失败，最后错误:`, lastError);
+    return null;
+}
+
+// 主循环
+async function aiTrading() {
+    console.log('=== AI自主交易系统 v2.1 - 智能发现模式 ===');
+    console.log('时间:', new Date().toISOString());
+    console.log(`今日交易: ${tradeLog.dailyTradeCount}/${AI_CONFIG.maxDailyTrades} 笔`);
+    console.log(`今日买入: ${tradeLog.dailyVolume}/${AI_CONFIG.maxDailyVolume} USDT (卖出不计入)`);
+    
+    // 获取账户数据
+    const account = await getAccountData();
+    if (!account) {
+        console.error('获取账户数据失败');
+        return;
+    }
+    
+    console.log(`\n账户概况:`);
+    console.log(`  总资产: $${account.totalEquity.toFixed(2)}`);
+    console.log(`  可用USDT: $${account.usdtAvailable.toFixed(2)}`);
+    
+    // 新增：每次交易检查都扫描黑名单币种趋势
+    await scanBlacklistTrends();
+    
+    // 新增：自动检测资金冻结问题
+    console.log(`\n🔍 自动检测资金冻结...`);
+    for (const coin of Object.keys(account.positions)) {
+        const pos = account.positions[coin];
+        const frozen = pos.amount - pos.available;
+        const frozenValue = frozen * pos.avgPrice;
+        
+        if (frozen > 0.01 && frozenValue > 5) {
+            console.log(`  ⚠️ ${coin}: 冻结 ${frozen.toFixed(4)}个 (~$${frozenValue.toFixed(2)})`);
+            console.log(`  🧹 自动清理...`);
+            await cancelAllPendingOrders(coin);
+        }
+    }
+    console.log(`  ✅ 资金冻结检测完成`);
+    console.log(`  可用USDT: $${account.usdtAvailable.toFixed(2)}`);
+    
+    // 获取当前持仓的币种
+    const holdingCoins = Object.keys(account.positions);
+    console.log(`\n当前持仓币种: ${holdingCoins.length > 0 ? holdingCoins.join(', ') : '无'}`);
+    
+    // 获取所有可交易币种
+    const allCoins = await getAllTradableCoins();
+    console.log(`\n发现 ${allCoins.length} 个活跃交易币种`);
+    
+    // 优先处理已有持仓的币种
+    let coinsToAnalyze = [];
+    
+    // 1. 已有持仓的币种必须分析
+    for (const coin of holdingCoins) {
+        const coinInfo = allCoins.find(c => c.symbol === coin);
+        if (coinInfo) {
+            coinsToAnalyze.push({ symbol: coin, instId: `${coin}-USDT`, hasPosition: true });
+        }
+    }
+    
+    // 2. 如果持仓币种不足3个，自动寻找交易机会
+    const minHoldingTypes = 3;
+    if (holdingCoins.length < minHoldingTypes) {
+        const needMore = minHoldingTypes - holdingCoins.length;
+        console.log(`\n⚠️ 持仓币种不足(${holdingCoins.length}/${minHoldingTypes})，寻找 ${needMore} 个新机会...`);
+        
+        // 筛选未持仓的高潜力币种（排除黑名单）
+        const candidates = [];
+        for (const coin of allCoins) {
+            if (!holdingCoins.includes(coin.symbol) && coin.symbol !== 'USDT' && !AI_CONFIG.blacklistedCoins.includes(coin.symbol)) {
+                const trend = await analyzeTrend(coin.instId);
+                candidates.push({
+                    ...coin,
+                    trendScore: trend.score,
+                    trend: trend.trend,
+                    signals: trend.signals || [],
+                    indicators: trend.indicators || {}
+                });
+            }
+        }
+        
+        // 按趋势评分排序，选择最佳候选
+        candidates.sort((a, b) => b.trendScore - a.trendScore);
+        
+        // 严格的趋势追踪选币策略（蚂蚁搬家的选币要更安全）
+        console.log('\n📊 候选币种趋势分析:');
+        for (const c of candidates.slice(0, 10)) { // 只显示前10个
+            const trendIcon = c.trend === 'bullish' ? '📈' : c.trend === 'bearish' ? '📉' : '➡️';
+            const trendText = c.trend === 'bullish' ? '看涨' : c.trend === 'bearish' ? '看跌' : '横盘';
+            
+            // 显示详细技术指标
+            let techIndicators = '';
+            if (c.signals && c.signals.length > 0) {
+                techIndicators = ` [${c.signals.slice(0, 3).join(', ')}]`;
+            }
+            
+            console.log(`  ${trendIcon} ${c.symbol}: 评分${c.trendScore}/10 ${trendText}${techIndicators}, 24h涨跌${c.change24h.toFixed(2)}%, 成交量$${(c.vol24h * c.price / 1000000).toFixed(2)}M`);
+        }
+        
+        // 严格筛选条件（趋势追踪风格）
+        const strictCandidates = candidates.filter(c => {
+            // 条件1: 趋势必须是看涨
+            const isBullish = c.trend === 'bullish';
+            // 条件2: 趋势评分必须 >= 8分（更严格）
+            const highScore = c.trendScore >= 8;
+            // 条件3: 24h涨跌必须在合理范围（不要暴涨暴跌的）
+            const reasonableChange = c.change24h > -5 && c.change24h < 15;
+            // 条件4: 成交量要足够（至少500万USDT）
+            const enoughVolume = (c.vol24h * c.price) > 5000000;
+            // 条件5: 价格不要太低（避免垃圾币）
+            const reasonablePrice = c.price > 0.1;
+            
+            const passed = isBullish && highScore && reasonableChange && enoughVolume && reasonablePrice;
+            if (passed) {
+                console.log(`  ✅ ${c.symbol} 通过严格筛选: 看涨+高分+合理涨跌+充足成交量`);
+            }
+            return passed;
+        });
+        
+        console.log(`\n🎯 严格筛选结果: ${strictCandidates.length} 个币种通过`);
+        
+        const topCandidates = strictCandidates.slice(0, needMore + 1); // 只选最优质的
+        
+        for (const c of topCandidates) {
+            coinsToAnalyze.push({ symbol: c.symbol, instId: c.instId, hasPosition: false, potential: c.trendScore });
+        }
+    }
+    
+    // 去重
+    const uniqueCoins = [];
+    const seen = new Set();
+    for (const coin of coinsToAnalyze) {
+        if (!seen.has(coin.symbol)) {
+            seen.add(coin.symbol);
+            uniqueCoins.push(coin);
+        }
+    }
+    
+    console.log(`\n🎯 本次分析 ${uniqueCoins.length} 个币种`);
+    
+    // 分析每个币种
+    for (const coin of uniqueCoins) {
+        console.log(`\n--- 分析 ${coin.symbol} ${coin.hasPosition ? '(有持仓)' : '(候选)'} ---`);
+        
+        const price = await getMarketPrice(coin.instId);
+        if (!price) continue;
+        
+        // 获取该币种的专门趋势分析
+        const trend = await analyzeTrend(coin.instId);
+        const trendText = trend.trend === 'bullish' ? '看涨' : trend.trend === 'bearish' ? '看跌' : '横盘';
+        
+        // ============================================
+        // 检查并调整止盈单 - 新增（修复：有持仓但无止盈单时自动补挂）
+        // ============================================
+        if (coin.hasPosition) {
+            // 铁律：有持仓必须有止盈单保护！
+            if (!TAKE_PROFIT_ORDERS[coin.symbol]) {
+                console.log(`  ⚠️ ${coin.symbol} 有持仓但无止盈单，立即补挂...`);
+                const position = account.positions[coin.symbol];
+                if (position && position.amount > 0) {
+                    const bands = await calculateDynamicBands(coin.symbol, price);
+                    const tpAmount = position.amount * 0.5; // 50%仓位挂止盈
+                    const tpResult = await placeMultipleTakeProfitOrders(coin.symbol, tpAmount, position.avgPrice || price);
+                    if (tpResult.success) {
+                        console.log(`  ✅ ${coin.symbol} 止盈单补挂成功！`);
+                        // 记录初始趋势评分
+                        if (TAKE_PROFIT_ORDERS[coin.symbol]) {
+                            TAKE_PROFIT_ORDERS[coin.symbol].lastTrendScore = trend.score;
+                            saveTakeProfitOrders();
+                        }
+                    } else {
+                        console.error(`  ❌ ${coin.symbol} 止盈单补挂失败:`, tpResult.error);
+                    }
+                }
+            } else {
+            console.log(`  🎯 检查止盈单状态...`);
+            
+            // 1. 检查止盈单是否已成交 - v2.2支持多档
+            const tpStatus = await checkTakeProfitOrderStatus(coin.symbol);
+            
+            // v2.2: 检查是否有任何档位成交或挂单中
+            const hasLiveOrder = tpStatus.exists && tpStatus.anyLive;
+            const allFilled = tpStatus.exists && tpStatus.allFilled;
+            
+            if (allFilled) {
+                // 所有止盈单已成交
+                console.log(`  ✅ 所有止盈单已成交！`);
+                
+                // 记录交易（使用第一档的数据）
+                const firstLevel = tpStatus.levels[0];
+                if (firstLevel) {
+                    tradeLog.trades.push({
+                        time: new Date().toISOString(),
+                        coin: coin.symbol,
+                        action: 'sell',
+                        price: firstLevel.avgPrice,
+                        amount: firstLevel.filledAmount,
+                        reason: '止盈单成交',
+                        ordId: TAKE_PROFIT_ORDERS[coin.symbol]?.levels?.[0]?.orderId
+                    });
+                    fs.writeFileSync('ai_trade_log.json', JSON.stringify(tradeLog, null, 2));
+                }
+                
+                // 清理止盈单记录
+                delete TAKE_PROFIT_ORDERS[coin.symbol];
+                saveTakeProfitOrders();
+                
+                // 跳过本次分析，因为已经卖出
+                continue;
+            } else if (hasLiveOrder) {
+                // 止盈单仍在挂单中，检查是否需要调整
+                console.log(`  ⏳ 止盈单挂单中，检查是否需要调整...`);
+                
+                // 获取上次记录的趋势评分
+                const lastTrendScore = TAKE_PROFIT_ORDERS[coin.symbol].lastTrendScore || 0;
+                const trendDiff = Math.abs(trend.score - lastTrendScore);
+                
+                // 只有趋势变化>2分才调整，避免频繁调整
+                if (trendDiff <= 2) {
+                    console.log(`  ⏭️ 趋势评分变化${trendDiff}分(<=2)，不调整止盈单`);
+                } else {
+                    console.log(`  🔄 趋势评分变化${trendDiff}分(>2)，调整止盈单...`);
+                    
+                    // 根据趋势调整止盈比例
+                    let newTpPercent;
+                    if (trend.score >= 8) {
+                        newTpPercent = 15; // 强趋势，扩大止盈
+                    } else if (trend.score >= 5) {
+                        newTpPercent = 10; // 中等趋势，标准止盈
+                    } else {
+                        newTpPercent = 6;  // 弱趋势，收紧止盈
+                    }
+                    
+                    // 增加API调用延迟，避免限流
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // 调整止盈单
+                    const adjustResult = await adjustTakeProfitOrder(coin.symbol, newTpPercent, price);
+                    if (adjustResult.success && !adjustResult.noChange) {
+                        console.log(`  ✅ 止盈单已调整至 ${newTpPercent}%`);
+                        // 更新趋势评分记录
+                        TAKE_PROFIT_ORDERS[coin.symbol].lastTrendScore = trend.score;
+                        saveTakeProfitOrders();
+                    } else if (adjustResult.noChange) {
+                        console.log(`  ⏭️ 止盈单无需调整`);
+                    } else {
+                        console.error(`  ⚠️ 止盈单调整失败:`, adjustResult.error);
+                    }
+                }
+            } else {
+                // 止盈单不存在或已撤销，重新挂单
+                console.log(`  ⚠️ 止盈单不存在，重新挂单...`);
+                const position = account.positions[coin.symbol];
+                if (position && position.amount > 0) {
+                    const bands = await calculateDynamicBands(coin.symbol, price);
+                    // 修复：使用 avgPrice 而不是 costPrice
+                    const costPrice = position.avgPrice || price;
+                    // 方案1：止盈单只挂50%仓位，保留50%用于动态止盈
+                    const tpAmount = position.amount * 0.5;
+                    
+                    // 增加API调用延迟
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    const tpResult = await placeMultipleTakeProfitOrders(
+                        coin.symbol,
+                        tpAmount,
+                        costPrice
+                    );
+                    if (tpResult.success) {
+                        console.log(`  ✅ 分批止盈单已挂${tpResult.successCount}/${tpResult.totalLevels}档`);
+                        // 记录初始趋势评分
+                        if (TAKE_PROFIT_ORDERS[coin.symbol]) {
+                            TAKE_PROFIT_ORDERS[coin.symbol].lastTrendScore = trend.score;
+                            saveTakeProfitOrders();
+                        }
+                    } else {
+                        console.error(`  ⚠️ 分批止盈单挂单失败`);
+                    }
+                }
+            }
+        }
+        
+        const sentiment = {
+            score: trend.score,
+            trend: trend.trend,
+            factors: [`技术趋势: ${trendText}`, `24h涨跌: ${trend.recentChange?.toFixed(2)}%`]
+        };
+        
+        const decision = await makeDecision(
+            coin.symbol, 
+            account.positions[coin.symbol], 
+            price, 
+            sentiment, 
+            account
+        );
+        
+        // 对于无持仓的高潜力币种，考虑买入（排除黑名单，确保低吸）
+        // 严格检查：黑名单、连续加仓限制、现金充足、冷却期、本次是否已买入
+        const isBlacklisted = AI_CONFIG.blacklistedCoins.includes(coin.symbol);
+        const hasPosition = account.positions && account.positions[coin.symbol];
+        const positionValue = hasPosition ? account.positions[coin.symbol].value : 0;
+        const positionPercent = account.totalEquity > 0 ? (positionValue / account.totalEquity * 100) : 0;
+        const cashPercent = account.totalEquity > 0 ? (account.usdtAvailable / account.totalEquity * 100) : 0;
+        const cooldown = checkBuyCooldown(coin.symbol);
+        
+        // 检查本次运行是否已经买入过该币种（防止同一周期重复买入）
+        const justBought = tradeLog.trades
+            .filter(t => t.coin === coin.symbol && t.action === 'buy')
+            .some(t => {
+                const tradeTime = new Date(t.time);
+                const now = new Date();
+                return (now - tradeTime) / (1000 * 60) < 5; // 5分钟内买入过
+            });
+        
+        // 详细检查日志
+        console.log(`  🔍 买入检查: 黑名单=${isBlacklisted}, 持仓=${positionPercent.toFixed(1)}%, 现金=${cashPercent.toFixed(1)}%, 冷却期=${cooldown.canBuy ? 'OK' : cooldown.remainingMinutes + '分钟'}, 近期买入=${justBought}`);
+        
+        if (!isBlacklisted && 
+            positionPercent <= 1 &&  // 极严格限制：只有持仓<=1%才允许买入（几乎无持仓）
+            !justBought &&  // 5分钟内没有买入过
+            coin.potential >= 8 && 
+            cashPercent >= 30 &&
+            cooldown.canBuy &&  // 冷却期检查
+            tradeLog.dailyTradeCount < AI_CONFIG.maxDailyTrades &&
+            tradeLog.dailyVolume < AI_CONFIG.maxDailyVolume &&
+            account.usdtAvailable >= AI_CONFIG.tradeSize) {
+            
+            console.log(`  💡 发现机会！${coin.symbol} 趋势评分 ${coin.potential}/10，现金充足${cashPercent.toFixed(1)}%，无持仓，冷却期OK`);
+            decision.action = 'buy';
+            decision.reason = `趋势强劲(${coin.potential}分)且现金充足(${cashPercent.toFixed(1)}%)，低吸建仓`;
+            decision.amount = AI_CONFIG.tradeSize / price;
+            decision.usdtAmount = AI_CONFIG.tradeSize;
+        } else {
+            if (isBlacklisted) {
+                console.log(`  🚫 ${coin.symbol}在黑名单中，跳过`);
+            } else if (positionPercent > 30) {
+                console.log(`  🚫 ${coin.symbol}已有持仓${positionPercent.toFixed(1)}%>30%，禁止买入`);
+            } else if (justBought) {
+                console.log(`  🚫 ${coin.symbol}5分钟内已买入，禁止重复买入`);
+            } else if (!cooldown.canBuy) {
+                console.log(`  🚫 ${coin.symbol}冷却期中，还需${cooldown.remainingMinutes}分钟`);
+            } else if (cashPercent < 30) {
+                console.log(`  🚫 现金不足${cashPercent.toFixed(1)}%<30%，禁止买入`);
+            }
+        }
+        
+        console.log(`  决策: ${decision.action.toUpperCase()}`);
+        console.log(`  原因: ${decision.reason}`);
+        
+        if (decision.action === 'buy' && decision.usdtAmount) {
+            console.log(`  计划买入: ${decision.amount.toFixed(6)} 个 (${decision.usdtAmount} USDT)`);
+        }
+        
+        // 修复：如果决策标记需要挂止盈单，先挂止盈单
+        if (decision.needTakeProfit && coin.hasPosition) {
+            console.log(`  🎯 超仓保护：先为${coin.symbol}挂止盈单...`);
+            const position = account.positions[coin.symbol];
+            if (position && position.amount > 0) {
+                const bands = await calculateDynamicBands(coin.symbol, price);
+                const tpAmount = position.amount * 0.5;
+                await placeMultipleTakeProfitOrders(coin.symbol, tpAmount, position.avgPrice || price);
+            }
+        }
+        
+        if (decision.action !== 'hold') {
+            const result = await executeTrade(
+                coin.instId, 
+                decision.action, 
+                decision.amount, 
+                price,
+                3,
+                decision.usdtAmount
+            );
+            
+            if (result && result.code === '0') {
+                // 记录交易
+                tradeLog.trades.push({
+                    time: new Date().toISOString(),
+                    coin: coin.symbol,
+                    action: decision.action,
+                    price: price,
+                    amount: decision.amount,
+                    reason: decision.reason,
+                    ordId: result.data[0].ordId
+                });
+                
+                // 只统计买入交易次数和成交量，卖出不算
+                if (decision.action === 'buy') {
+                    tradeLog.dailyTradeCount++;
+                    tradeLog.dailyVolume += AI_CONFIG.tradeSize;
+                    // 记录最后买入时间
+                    if (!tradeLog.lastBuyTime) tradeLog.lastBuyTime = {};
+                    tradeLog.lastBuyTime[coin.symbol] = new Date().toISOString();
+                    
+                    // ============================================
+                    // 买入成功后立即挂止盈单 - 新增
+                    // ============================================
+                    console.log(`\n🎯 买入成功，准备挂止盈单...`);
+                    
+                    // 计算动态止盈比例
+                    const bands = await calculateDynamicBands(coin.symbol, price);
+                    const tpPercent = bands.takeProfit;
+                    
+                    // 方案1：止盈单只挂50%仓位，保留50%用于动态止盈
+                    const tpAmount = decision.amount * 0.5;
+                    
+                    // 挂止盈单
+                    const tpResult = await placeTakeProfitOrder(
+                        coin.symbol,
+                        tpAmount,
+                        price,
+                        tpPercent
+                    );
+                    
+                    if (tpResult.success) {
+                        console.log(`✅ ${coin.symbol} 止盈单已挂50%仓位(${tpAmount.toFixed(6)}个)，目标 +${tpPercent.toFixed(2)}%，保留50%用于动态止盈`);
+                    } else {
+                        console.error(`⚠️ ${coin.symbol} 止盈单挂单失败:`, tpResult.error);
+                    }
+                }
+                
+                // 如果是卖出，撤销对应的止盈单
+                if (decision.action === 'sell') {
+                    const tpOrder = TAKE_PROFIT_ORDERS[coin.symbol];
+                    if (tpOrder) {
+                        console.log(`\n🔄 卖出成功，撤销止盈单...`);
+                        const cancelResult = await cancelTakeProfitOrder(coin.symbol);
+                        if (cancelResult.success) {
+                            console.log(`✅ ${coin.symbol} 止盈单已撤销`);
+                        } else {
+                            console.error(`⚠️ ${coin.symbol} 止盈单撤销失败:`, cancelResult.error);
+                        }
+                    }
+                }
+                
+                // 如果标记加入黑名单，则添加
+                if (decision.addToBlacklist && !AI_CONFIG.blacklistedCoins.includes(coin.symbol)) {
+                    AI_CONFIG.blacklistedCoins.push(coin.symbol);
+                    PERSISTENT_BLACKLIST.push(coin.symbol);
+                    fs.writeFileSync(BLACKLIST_FILE, JSON.stringify(PERSISTENT_BLACKLIST, null, 2));
+                    console.log(`⚠️ ${coin.symbol} 已加入黑名单并持久化，禁止后续买入`);
+                }
+                
+                fs.writeFileSync('ai_trade_log.json', JSON.stringify(tradeLog, null, 2));
+                console.log('✅ 交易已记录');
+            }
+        }
+    }
+    
+    console.log('\n=== 本次检查完成 ===\n');
+    
+    // 自动复盘：检查是否有超仓问题
+    console.log('=== 自动复盘分析 ===');
+    const recentTrades = tradeLog.trades.filter(t => {
+        const tradeTime = new Date(t.time);
+        const now = new Date();
+        return (now - tradeTime) / (1000 * 60) < 60; // 最近60分钟
+    });
+    
+    // 统计每个币种的买入次数
+    const buyCounts = {};
+    recentTrades.forEach(t => {
+        if (t.action === 'buy') {
+            buyCounts[t.coin] = (buyCounts[t.coin] || 0) + 1;
+        }
+    });
+    
+    // 检查是否有频繁买入（可能超仓）
+    let hasOverTrading = false;
+    for (const [coin, count] of Object.entries(buyCounts)) {
+        if (count >= 2) {
+            console.log(`⚠️ 发现问题：${coin} 60分钟内买入${count}次，可能存在超仓风险`);
+            hasOverTrading = true;
+        }
+    }
+    
+    if (hasOverTrading) {
+        console.log('🔧 自动调整：加强买入限制');
+        // 这里可以自动调整策略参数
+    } else {
+        console.log('✅ 复盘正常：未发现超仓问题');
+    }
+    
+    // 策略自迭代
+    const evolutionResult = await evolveStrategy(tradeLog);
+    if (evolutionResult.paused) {
+        console.log(`⚠️ 策略暂停中，${evolutionResult.remaining}分钟后恢复`);
+    } else if (evolutionResult.evolution) {
+        console.log('✅ 策略参数已更新');
+        // 应用新参数
+        AI_CONFIG.stopLossPercent = evolutionResult.evolution.stopLoss;
+        AI_CONFIG.takeProfitPercent = evolutionResult.evolution.takeProfit;
+        AI_CONFIG.maxPositions = evolutionResult.evolution.maxPositions;
+        AI_CONFIG.tradeSize = evolutionResult.evolution.tradeSize;
+        AI_CONFIG.sentimentThreshold = evolutionResult.evolution.sentimentThreshold;
+    }
+    
+    // 自动复盘并迭代 - 增强版
+    await autoReviewAndEvolve(tradeLog, account.positions, account.totalEquity);
+}
+
+// 自动复盘并迭代策略
+async function autoReviewAndEvolve(tradeLog, positions, totalEquity) {
+    console.log('\n=== 自动复盘与策略迭代 ===');
+    
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    
+    // 1. 分析今日交易表现
+    const todayTrades = tradeLog.trades.filter(t => t.time.startsWith(today));
+    const buyTrades = todayTrades.filter(t => t.action === 'buy');
+    const sellTrades = todayTrades.filter(t => t.action === 'sell');
+    
+    // 2. 计算胜率
+    const profitableSells = sellTrades.filter(t => {
+        // 通过reason判断盈亏
+        return t.reason && (t.reason.includes('止盈') || t.reason.includes('盈利'));
+    });
+    const winRate = sellTrades.length > 0 ? (profitableSells.length / sellTrades.length * 100) : 0;
+    
+    // 3. 计算平均盈亏
+    let totalProfit = 0;
+    let totalLoss = 0;
+    sellTrades.forEach(t => {
+        if (t.reason && t.reason.includes('止盈')) {
+            totalProfit += 2; // 估算盈利2%
+        } else if (t.reason && t.reason.includes('止损')) {
+            totalLoss += 1; // 估算亏损1%
+        }
+    });
+    const avgProfit = profitableSells.length > 0 ? (totalProfit / profitableSells.length) : 0;
+    const avgLoss = (sellTrades.length - profitableSells.length) > 0 ? (totalLoss / (sellTrades.length - profitableSells.length)) : 0;
+    const profitLossRatio = avgLoss > 0 ? (avgProfit / avgLoss) : 0;
+    
+    // 4. 分析持仓时间
+    const positionDurations = [];
+    for (const [coin, pos] of Object.entries(positions)) {
+        if (pos && pos.amount > 0) {
+            const buyTrade = todayTrades.find(t => t.coin === coin && t.action === 'buy');
+            if (buyTrade) {
+                const holdTime = (now - new Date(buyTrade.time)) / (1000 * 60 * 60); // 小时
+                positionDurations.push({ coin, hours: holdTime });
+            }
+        }
+    }
+    const avgHoldTime = positionDurations.length > 0 ? 
+        positionDurations.reduce((sum, p) => sum + p.hours, 0) / positionDurations.length : 0;
+    
+    // 5. 自动迭代决策
+    let adjustments = [];
+    let notifications = [];
+    
+    // 规则1: 胜率低于30%，收紧止损
+    if (winRate < 30 && sellTrades.length >= 3) {
+        const newStopLoss = AI_CONFIG.stopLossPercent * 0.8; // 收紧20%
+        adjustments.push(`胜率${winRate.toFixed(1)}%过低，止损从${AI_CONFIG.stopLossPercent}%收紧至${newStopLoss.toFixed(2)}%`);
+        AI_CONFIG.stopLossPercent = newStopLoss;
+        notifications.push(`⚠️ 自动迭代：胜率过低(${winRate.toFixed(1)}%)，已收紧止损至${newStopLoss.toFixed(2)}%`);
+    }
+    
+    // 规则2: 盈亏比低于1，调整止盈
+    if (profitLossRatio < 1 && profitLossRatio > 0) {
+        const newTakeProfit = AI_CONFIG.takeProfitPercent * 0.9; // 降低止盈期望
+        adjustments.push(`盈亏比${profitLossRatio.toFixed(2)}过低，止盈从${AI_CONFIG.takeProfitPercent}%调整至${newTakeProfit.toFixed(2)}%`);
+        AI_CONFIG.takeProfitPercent = newTakeProfit;
+        notifications.push(`⚠️ 自动迭代：盈亏比过低(${profitLossRatio.toFixed(2)})，已调整止盈至${newTakeProfit.toFixed(2)}%`);
+    }
+    
+    // 规则3: 平均持仓时间过长，降低选股门槛以加快交易节奏
+    if (avgHoldTime > 6) {
+        const newThreshold = Math.max(5, AI_CONFIG.sentimentThreshold - 1);
+        adjustments.push(`平均持仓${avgHoldTime.toFixed(1)}小时过长，降低选股门槛至${newThreshold}分以加快节奏`);
+        AI_CONFIG.sentimentThreshold = newThreshold;
+        notifications.push(`⚠️ 自动迭代：持仓时间过长(${avgHoldTime.toFixed(1)}小时)，已降低选股门槛至${newThreshold}分`);
+    }
+    
+    // 规则4: 连续亏损检测
+    const recentSells = sellTrades.slice(-5);
+    const consecutiveLosses = recentSells.filter(t => t.reason && t.reason.includes('止损')).length;
+    if (consecutiveLosses >= 3) {
+        const newTradeSize = Math.max(40, AI_CONFIG.tradeSize * 0.8); // 降低单笔金额，但最低$40
+        adjustments.push(`连续${consecutiveLosses}次止损，降低单笔金额至$${newTradeSize.toFixed(2)}`);
+        AI_CONFIG.tradeSize = newTradeSize;
+        notifications.push(`🚨 自动迭代：连续${consecutiveLosses}次止损，已降低单笔金额至$${newTradeSize.toFixed(2)}`);
+    }
+    
+    // 规则5: 现金比例过低，增加最大持仓数以提高资金利用率
+    const cashPercent = totalEquity > 0 ? (58.49 / totalEquity * 100) : 0;
+    if (cashPercent < 30) {
+        const newMaxPositions = Math.min(5, AI_CONFIG.maxPositions + 1);
+        adjustments.push(`现金比例${cashPercent.toFixed(1)}%过低，增加最大持仓至${newMaxPositions}个以提高利用率`);
+        AI_CONFIG.maxPositions = newMaxPositions;
+        notifications.push(`⚠️ 自动迭代：现金比例过低(${cashPercent.toFixed(1)}%)，已增加最大持仓至${newMaxPositions}个`);
+    }
+    
+    // 输出复盘报告
+    console.log('\n📊 今日交易复盘:');
+    console.log(`  买入次数: ${buyTrades.length}`);
+    console.log(`  卖出次数: ${sellTrades.length}`);
+    console.log(`  胜率: ${winRate.toFixed(1)}%`);
+    console.log(`  盈亏比: ${profitLossRatio.toFixed(2)}`);
+    console.log(`  平均持仓时间: ${avgHoldTime.toFixed(1)}小时`);
+    
+    if (adjustments.length > 0) {
+        console.log('\n🔧 自动迭代调整:');
+        adjustments.forEach(adj => console.log(`  • ${adj}`));
+        
+        // 保存调整记录
+        const evolveLog = {
+            time: now.toISOString(),
+            adjustments: adjustments,
+            metrics: {
+                winRate,
+                profitLossRatio,
+                avgHoldTime,
+                cashPercent
+            }
+        };
+        
+        let evolveHistory = [];
+        if (fs.existsSync('ai_evolve_log.json')) {
+            evolveHistory = JSON.parse(fs.readFileSync('ai_evolve_log.json', 'utf8'));
+        }
+        evolveHistory.push(evolveLog);
+        fs.writeFileSync('ai_evolve_log.json', JSON.stringify(evolveHistory.slice(-30), null, 2)); // 保留最近30条
+        
+        console.log('\n📢 自动通知:');
+        notifications.forEach(notif => console.log(`  ${notif}`));
+    } else {
+        console.log('\n✅ 策略表现良好，无需调整');
+    }
+    
+    console.log('\n=== 自动复盘完成 ===');
+}
+
+// ============================================
+// 定期扫描黑名单币种趋势 - v2.5 新增
+// 每6小时自动检查所有黑名单币种，提前发现可解除的币种
+// ============================================
+async function scanBlacklistTrends() {
+    console.log('\n=== 🔍 定期扫描黑名单币种趋势 ===');
+    console.log('时间:', new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
+    
+    if (PERSISTENT_BLACKLIST.length === 0) {
+        console.log('✅ 当前无黑名单币种，无需扫描');
+        return;
+    }
+    
+    console.log(`📋 黑名单币种数: ${PERSISTENT_BLACKLIST.length}`);
+    console.log(`币种列表: ${PERSISTENT_BLACKLIST.join(', ')}`);
+    console.log('');
+    
+    let scannedCount = 0;
+    let removedCount = 0;
+    
+    for (const coin of PERSISTENT_BLACKLIST) {
+        try {
+            // 获取当前价格
+            const currentPrice = await getMarketPrice(`${coin}-USDT`);
+            if (!currentPrice) {
+                console.log(`  ⚠️ ${coin}: 无法获取价格，跳过`);
+                continue;
+            }
+            
+            // 分析趋势
+            const trendScore = await analyzeTrend(`${coin}-USDT`);
+            
+            // 检查是否应该解除黑名单
+            const shouldRemove = shouldRemoveFromBlacklist(coin, trendScore.score, currentPrice);
+            
+            if (shouldRemove) {
+                console.log(`  ✅ ${coin}: 已解除黑名单`);
+                removedCount++;
+            } else {
+                // 显示详细状态
+                const tracker = BLACKLIST_TREND_TRACKER[coin] || { highTrendCount: 0 };
+                const priceTracker = BLACKLIST_PRICE_TRACKER[coin];
+                const hoursInBlacklist = tracker.addedToBlacklistTime ? 
+                    ((Date.now() - tracker.addedToBlacklistTime) / (1000 * 60 * 60)).toFixed(1) : '未知';
+                
+                let statusMsg = `  📊 ${coin}: 评分${trendScore.score}/10, 累计${tracker.highTrendCount}/3次, 已拉黑${hoursInBlacklist}小时`;
+                
+                if (priceTracker) {
+                    const bouncePercent = ((currentPrice - priceTracker.lowestPrice) / priceTracker.lowestPrice * 100).toFixed(2);
+                    statusMsg += `, 价格反弹${bouncePercent}%`;
+                }
+                
+                console.log(statusMsg);
+            }
+            
+            scannedCount++;
+            
+            // 避免请求过快
+            await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (e) {
+            console.error(`  ❌ ${coin}: 扫描失败 - ${e.message}`);
+        }
+    }
+    
+    console.log('');
+    console.log(`✅ 扫描完成: ${scannedCount}个币种, 解除${removedCount}个`);
+    console.log('=== 黑名单趋势扫描结束 ===\n');
+}
+
+// 检查是否需要执行定期扫描（每6小时执行一次）
+function shouldRunBlacklistScan() {
+    const SCAN_INTERVAL_HOURS = 6;
+    const lastScanFile = './.last_blacklist_scan';
+    
+    const now = Date.now();
+    
+    if (!fs.existsSync(lastScanFile)) {
+        fs.writeFileSync(lastScanFile, now.toString());
+        return true;
+    }
+    
+    const lastScan = parseInt(fs.readFileSync(lastScanFile, 'utf8'));
+    const hoursSinceLastScan = (now - lastScan) / (1000 * 60 * 60);
+    
+    if (hoursSinceLastScan >= SCAN_INTERVAL_HOURS) {
+        fs.writeFileSync(lastScanFile, now.toString());
+        return true;
+    }
+    
+    return false;
+}
+
+// 生成并显示交易统计报告
+const stats = new TradeStats();
+console.log(stats.generateReport());
+
+// 运行
+aiTrading().catch(console.error);
+}

@@ -1,0 +1,192 @@
+{
+  "lastUpdated": "2026-02-18T17:30:00+08:00",
+  "totalInvested": 58.15,
+  "remaining": 12.31,
+  "dataSource": "数据来源：本地计算（Tavily实时价格 + 本地持仓）",
+  "prices": {
+    "BTC": {"usd": 68118, "change24h": 0.17},
+    "ETH": {"usd": 2018.88, "change24h": 2.41},
+    "DOGE": {"usd": 0.101363, "change24h": 2.35},
+    "SOL": {"usd": 85.57, "change24h": -0.30},
+    "VIRTUAL": {"usd": 0.658637, "change24h": 1.95},
+    "BNKR": {"usd": 0.0004946, "change24h": -0.5},
+    "POL": {"usd": 0.02082378, "change24h": -2.73},
+    "USDC": {"usd": 1.0, "change24h": 0},
+    "ETHY": {"usd": 0.00244, "change24h": 0}
+  },
+  "positions": [
+    {
+      "asset": "ETH",
+      "chain": "Base",
+      "quantity": 0.010127,
+      "costBasis": 11.98,
+      "avgCostPerUnit": 1183.5,
+      "currentPrice": 2018.88,
+      "currentValue": 20.44,
+      "pnl": 8.46,
+      "pnlPercent": 70.6,
+      "status": "holding",
+      "targetSell": {"takeProfit": 2500, "stopLoss": 1800}
+    },
+    {
+      "asset": "USDC",
+      "chain": "Base",
+      "quantity": 12.31,
+      "costBasis": 12.31,
+      "avgCostPerUnit": 1.00,
+      "currentPrice": 1.0,
+      "currentValue": 12.31,
+      "pnl": 0,
+      "pnlPercent": 0,
+      "status": "holding"
+    },
+    {
+      "asset": "BNKR",
+      "chain": "Base",
+      "quantity": 14927.58,
+      "costBasis": 8.68,
+      "avgCostPerUnit": 0.000581,
+      "currentPrice": 0.0004946,
+      "currentValue": 7.38,
+      "pnl": -1.30,
+      "pnlPercent": -15.0,
+      "status": "holding",
+      "targetSell": {"takeProfit": 0.0008, "stopLoss": 0.00045}
+    },
+    {
+      "asset": "NOX",
+      "chain": "Base",
+      "quantity": 0,
+      "costBasis": 0,
+      "avgCostPerUnit": 0,
+      "currentPrice": 0.000511,
+      "currentValue": 0,
+      "pnl": -3.41,
+      "pnlPercent": -100,
+      "status": "sold",
+      "soldAt": "2026-02-18T02:00:00+08:00",
+      "sellPrice": 0.000745,
+      "sellValue": 6.51,
+      "targetSell": {"takeProfit": 0.0012, "stopLoss": 0.0006},
+      "soldReason": "止损：亏损已达56%，触发止损线"
+    },
+    {
+      "asset": "SOL",
+      "chain": "Solana",
+      "quantity": 0.078954,
+      "costBasis": 5.00,
+      "avgCostPerUnit": 63.37,
+      "currentPrice": 85.57,
+      "currentValue": 6.76,
+      "pnl": 1.76,
+      "pnlPercent": 35.2,
+      "status": "holding",
+      "targetSell": {"takeProfit": 100, "stopLoss": 75}
+    },
+    {
+      "asset": "ETHY",
+      "chain": "Base",
+      "quantity": 1678,
+      "costBasis": 4.10,
+      "avgCostPerUnit": 0.00244,
+      "currentPrice": 0.00244,
+      "currentValue": 4.09,
+      "pnl": -0.01,
+      "pnlPercent": -0.2,
+      "status": "holding",
+      "targetSell": {"takeProfit": 0.0035, "stopLoss": 0.0022}
+    },
+    {
+      "asset": "VIRTUAL",
+      "chain": "Base",
+      "quantity": 5.47,
+      "costBasis": 3.45,
+      "avgCostPerUnit": 0.630,
+      "currentPrice": 0.658637,
+      "currentValue": 3.60,
+      "pnl": 0.15,
+      "pnlPercent": 4.3,
+      "status": "holding",
+      "targetSell": {"takeProfit": 0.85, "stopLoss": 0.55}
+    },
+    {
+      "asset": "DOGE",
+      "chain": "Base",
+      "quantity": 21799.68,
+      "costBasis": 1.94,
+      "avgCostPerUnit": 0.000089,
+      "currentPrice": 0.101363,
+      "currentValue": 2.21,
+      "pnl": 0.27,
+      "pnlPercent": 13.9,
+      "status": "holding",
+      "targetSell": {"takeProfit": 0.12, "stopLoss": 0.09}
+    },
+    {
+      "asset": "FELIX",
+      "chain": "Base",
+      "quantity": 0,
+      "costBasis": 0,
+      "avgCostPerUnit": 0,
+      "currentPrice": 0.000015,
+      "currentValue": 0,
+      "pnl": -0.80,
+      "pnlPercent": -100,
+      "status": "sold",
+      "soldAt": "2026-02-18T02:00:00+08:00",
+      "sellPrice": 0.0000148,
+      "sellValue": 0.54,
+      "targetSell": {"takeProfit": 0.000025, "stopLoss": 0.000012},
+      "soldReason": "止损：亏损已达31.6%，接近止损线"
+    },
+    {
+      "asset": "POL",
+      "chain": "Polygon",
+      "quantity": 1.653,
+      "costBasis": 0,
+      "avgCostPerUnit": 0,
+      "currentPrice": 0.02082378,
+      "currentValue": 0.03,
+      "pnl": 0.03,
+      "pnlPercent": 0,
+      "status": "holding"
+    }
+  ],
+  "smallHoldings": [
+    {"asset": "USRX", "chain": "Base", "quantity": 125, "value": 0.06},
+    {"asset": "ICF", "chain": "Base", "quantity": 50, "value": 0.02},
+    {"asset": "HTC", "chain": "Base", "quantity": 25, "value": 0.01},
+    {"asset": "WAR", "chain": "Base", "quantity": 50, "value": 0.01}
+  ],
+  "totalValue": 56.81,
+  "totalPnl": 9.66,
+  "totalPnlPercent": 20.5,
+  "realizedPnl": -8.54,
+  "availableUSDC": 12.31,
+  "lastReport": "2026-02-18T17:30:00+08:00",
+  "nextReport": "2026-02-18T18:00:00+08:00",
+  "dailyStats": {
+    "date": "2026-02-18",
+    "targetProfit": 10.00,
+    "targetLossLimit": -7.00,
+    "currentPnl": 9.66,
+    "realizedPnl": -8.54,
+    "trades": [
+      {"time": "2026-02-18T02:00:00+08:00", "asset": "NOX", "action": "sell", "amount": 8743, "price": 0.000745, "value": 6.51, "pnl": -3.41, "reason": "止损触发"},
+      {"time": "2026-02-18T02:00:00+08:00", "asset": "FELIX", "action": "sell", "amount": 36359, "price": 0.0000148, "value": 0.54, "pnl": -0.80, "reason": "止损触发"}
+    ],
+    "stopLossTriggered": true
+  },
+  "marketSentiment": {
+    "fearGreedIndex": "中性偏多",
+    "btcPrice": 68118,
+    "ethPrice": 2018.88,
+    "keyNews": [
+      "马斯克确认X平台将集成加密货币功能，利好BTC和整体加密市场",
+      "特朗普CLARITY法案推动监管明确化，财长表示将提振投资者信心",
+      "阿布扎比主权基金比特币ETF持仓超10亿美元，显示机构持续入场",
+      "白宫表示数万亿美元资金等待进入比特币和加密市场"
+    ],
+    "riskStatus": "日止损线已触发（实现亏损-8.54 < -7），暂停新买入，仅观察现有持仓"
+  }
+}

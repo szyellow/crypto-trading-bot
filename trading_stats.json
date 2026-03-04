@@ -1,0 +1,19 @@
+{
+  "date": "2026-02-17",
+  "operations": [
+    {
+      "time": "00:30",
+      "action": "波段监测报告",
+      "asset": null,
+      "amount": 0,
+      "price": 0,
+      "pnl": 0,
+      "notes": "定时报告生成"
+    }
+  ],
+  "dailyStats": {
+    "target": 10,
+    "stopLoss": -7,
+    "current": 0
+  }
+}

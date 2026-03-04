@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "agent-browser": {
+      "version": "0.2.0",
+      "installedAt": 1770803375381
+    },
+    "tavily-search": {
+      "version": "1.0.0",
+      "installedAt": 1771201466262
+    },
+    "okx-trader": {
+      "version": "1.2.0",
+      "installedAt": 1771347365691
+    },
+    "pinduoduo-automation": {
+      "version": "2.0.2",
+      "installedAt": 1772291298404
+    },
+    "self-improving-agent": {
+      "version": "1.0.11",
+      "installedAt": 1772325844687
+    },
+    "github": {
+      "version": "1.0.0",
+      "installedAt": 1772529377617
+    }
+  }
+}

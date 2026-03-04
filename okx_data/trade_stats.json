@@ -1,0 +1,38 @@
+{
+  "summary": {
+    "totalTrades": 2,
+    "buyCount": 0,
+    "sellCount": 2,
+    "takeProfitSells": 1,
+    "stopLossSells": 1,
+    "winRate": "50.00",
+    "avgProfit": "2.12",
+    "avgLoss": "1.50",
+    "profitLossRatio": "1.41",
+    "totalProfit": "2.12",
+    "totalLoss": "1.50",
+    "netProfit": "0.62"
+  },
+  "coinStats": {
+    "XAUT": {
+      "buys": 0,
+      "sells": 1,
+      "profit": 1,
+      "loss": 0
+    },
+    "BTC": {
+      "buys": 0,
+      "sells": 1,
+      "profit": 0,
+      "loss": 1
+    }
+  },
+  "today": {
+    "date": "2026-03-04",
+    "trades": 2,
+    "buys": 0,
+    "sells": 2,
+    "volume": "0.00"
+  },
+  "lastUpdated": "2026-03-04T03:35:08.994Z"
+}

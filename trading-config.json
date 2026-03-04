@@ -1,0 +1,72 @@
+{
+  "tradingConfig": {
+    "version": "2.0",
+    "updatedAt": "2026-02-19T08:52:00+08:00",
+    "mode": "完全自主交易",
+    "authorization": {
+      "user": "黄玮康",
+      "confirmedAt": "2026-02-19T08:51:17+08:00",
+      "scope": "完全自主决策和执行"
+    }
+  },
+  "riskManagement": {
+    "maxPerTrade": 10,
+    "maxPerDay": 30,
+    "stopLoss": -5,
+    "takeProfit": 10,
+    "maxPositionPerCoin": 30,
+    "minCashReserve": 20
+  },
+  "strategies": {
+    "gridTrading": {
+      "enabled": true,
+      "grids": [
+        {
+          "name": "ETH-USDT-积极",
+          "instId": "ETH-USDT",
+          "investment": 40,
+          "minPrice": 1800,
+          "maxPrice": 2200,
+          "gridCount": 15,
+          "status": "active"
+        },
+        {
+          "name": "DOGE-USDT-积极",
+          "instId": "DOGE-USDT",
+          "investment": 10,
+          "minPrice": 0.09,
+          "maxPrice": 0.11,
+          "gridCount": 10,
+          "status": "active"
+        }
+      ]
+    },
+    "manualTrading": {
+      "enabled": true,
+      "approach": "自主寻找机会，不限制币种",
+      "analysis": {
+        "sentimentWeight": 40,
+        "technicalWeight": 40,
+        "marketSentimentWeight": 20
+      },
+      "evaluationInterval": "每小时",
+      "watchlist": ["BTC", "ETH", "XRP", "SOL", "DOGE", "ADA", "LINK", "UNI", "AVAX", "SUI"]
+    }
+  },
+  "autoExecution": {
+    "enabled": true,
+    "rules": [
+      "重大利好舆情 → 加仓",
+      "重大利空舆情 → 减仓/止损",
+      "突破关键阻力 → 追涨",
+      "跌破关键支撑 → 止损/观望",
+      "马斯克提及币种 → 立即评估",
+      "特朗普政策新闻 → 30分钟内分析"
+    ]
+  },
+  "reporting": {
+    "interval": "每30分钟",
+    "format": "7部分表格",
+    "delivery": "当前对话直接显示"
+  }
+}

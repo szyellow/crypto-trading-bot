@@ -1,0 +1,133 @@
+{
+  "timestamp": "2026-02-18T13:31:09.268Z",
+  "totalEquityUsd": 88.51754913868365,
+  "assets": {
+    "USDT": {
+      "equity": 43.3000001546,
+      "available": 43.3000001546,
+      "frozen": 0,
+      "usd": 43.27878315452425,
+      "spotUpl": 0,
+      "spotUplRatio": 0
+    },
+    "ETH": {
+      "equity": 0.01326539,
+      "available": 0.01326539,
+      "frozen": 0,
+      "usd": 26.3292787259,
+      "spotUpl": 0,
+      "spotUplRatio": 0
+    },
+    "USDC": {
+      "equity": 12.30861499,
+      "available": 12.30861499,
+      "frozen": 0,
+      "usd": 12.307384128501,
+      "spotUpl": 0,
+      "spotUplRatio": 0
+    },
+    "XRP": {
+      "equity": 4.492449054,
+      "available": 4.492449054,
+      "frozen": 0,
+      "usd": 6.6021031297584,
+      "spotUpl": -0.0881177978672447,
+      "spotUplRatio": -0.0131711342301692
+    }
+  },
+  "prices": {
+    "ETH-USDT": 1985.81,
+    "ETH-USDC": 1987.06,
+    "BTC-USDT": 67458
+  },
+  "tradingSummary24h": {
+    "ETH-USDT": {
+      "fills": 0,
+      "buyCount": 0,
+      "sellCount": 0,
+      "buyVol": 0,
+      "buyVal": 0,
+      "buyAvg": 0,
+      "sellVol": 0,
+      "sellVal": 0,
+      "sellAvg": 0,
+      "netVol": 0,
+      "netUsdt": 0,
+      "fees": 0
+    },
+    "ETH-USDC": {
+      "fills": 0,
+      "buyCount": 0,
+      "sellCount": 0,
+      "buyVol": 0,
+      "buyVal": 0,
+      "buyAvg": 0,
+      "sellVol": 0,
+      "sellVal": 0,
+      "sellAvg": 0,
+      "netVol": 0,
+      "netUsdt": 0,
+      "fees": 0
+    },
+    "BTC-USDT": {
+      "fills": 0,
+      "buyCount": 0,
+      "sellCount": 0,
+      "buyVol": 0,
+      "buyVal": 0,
+      "buyAvg": 0,
+      "sellVol": 0,
+      "sellVal": 0,
+      "sellAvg": 0,
+      "netVol": 0,
+      "netUsdt": 0,
+      "fees": 0
+    }
+  },
+  "pendingOrders": {
+    "ETH-USDT": 0,
+    "ETH-USDC": 0,
+    "BTC-USDT": 0
+  },
+  "gridSettings": {
+    "main": {
+      "instId": "ETH-USDT",
+      "instrument": "ETH-USDT",
+      "gridCount": 10,
+      "gridRange": 0.05,
+      "orderSize": 5,
+      "maxPosition": 50,
+      "sizePerGrid": 5,
+      "minPrice": 1900,
+      "maxPrice": 2300,
+      "trailingPercent": 0.1,
+      "minProfitGap": 0.02
+    },
+    "usdc": {
+      "instId": "ETH-USDC",
+      "instrument": "ETH-USDC",
+      "gridCount": 5,
+      "gridRange": 0.05,
+      "orderSize": 2.5,
+      "maxPosition": 12.31,
+      "sizePerGrid": 2.5,
+      "minPrice": 1900,
+      "maxPrice": 2300,
+      "trailingPercent": 0.1,
+      "minProfitGap": 0.02
+    },
+    "micro": {
+      "instId": "BTC-USDT",
+      "instrument": "BTC-USDT",
+      "gridCount": 20,
+      "gridRange": 0.02,
+      "orderSize": 2,
+      "maxPosition": 39,
+      "sizePerGrid": 2,
+      "minPrice": 65000,
+      "maxPrice": 70000,
+      "trailingPercent": 0.05,
+      "minProfitGap": 0.01
+    }
+  }
+}
