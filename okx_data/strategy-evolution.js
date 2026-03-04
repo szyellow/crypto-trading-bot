@@ -123,11 +123,11 @@ function generateAdjustments(performance, currentParams) {
     // 低胜率情况 - 收紧策略
     if (performance.winRate <= EVOLUTION_CONFIG.winRateLow && performance.totalTrades >= 5) {
         adjustments.push(`胜率偏低(${Math.round(performance.winRate * 100)}%)，收紧止损`);
-        // 修复：止损值应该是负数，收紧意味着更接近0（比如从-2.5到-2.0是错误的，应该是-2.5到-3.0）
-        // 正确的收紧：绝对值变大（-2.5 → -3.0），这样止损更严格
-        newParams.stopLoss = Math.max(
-            EVOLUTION_CONFIG.adjustmentRange.stopLoss.min, // -5
-            currentParams.stopLoss - 0.5 // 向-5靠近，绝对值变大
+        // 修复：止损值是负数，"收紧"意味着更容易触发止损
+        // 正确的收紧：绝对值变小（-2.5 → -2.0），这样更容易触发止损
+        newParams.stopLoss = Math.min(
+            EVOLUTION_CONFIG.adjustmentRange.stopLoss.max, // -3 (更接近0，更严格)
+            currentParams.stopLoss + 0.5 // 向-3靠近，绝对值变小
         );
         newParams.tradeSize = Math.max(
             EVOLUTION_CONFIG.adjustmentRange.tradeSize.min,
@@ -142,7 +142,7 @@ function generateAdjustments(performance, currentParams) {
     // 连续亏损处理
     if (performance.consecutiveLosses >= EVOLUTION_CONFIG.consecutiveLossThreshold) {
         adjustments.push(`连续亏损${performance.consecutiveLosses}笔，暂停交易并收紧策略`);
-        newParams.stopLoss = EVOLUTION_CONFIG.adjustmentRange.stopLoss.min; // -5 (更严格)
+        newParams.stopLoss = EVOLUTION_CONFIG.adjustmentRange.stopLoss.max; // -3 (最严格，最接近0)
         newParams.tradeSize = EVOLUTION_CONFIG.adjustmentRange.tradeSize.min; // 40
         newParams.sentimentThreshold = EVOLUTION_CONFIG.adjustmentRange.sentimentThreshold.max; // 8
     }
