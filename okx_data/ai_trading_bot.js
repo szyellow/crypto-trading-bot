@@ -131,12 +131,12 @@ function shouldRemoveFromBlacklist(coin, currentTrendScore) {
     return false;
 }
 
-// AI交易配置
+// AI交易配置 - v2.4 优化版（保护本金）
 const AI_CONFIG = {
     maxPositionPerCoin: 35,      // 单币种最大仓位35%（降低集中度）
     maxDailyTrades: 9999,        // 每日最大交易次数（已取消限制，满足条件即可交易）
     maxDailyVolume: 1000,        // 每日最大交易量$1000（追加投资后提升）
-    stopLossPercent: -2.5,       // 止损线-2.5%（放宽止损，给波动空间）
+    stopLossPercent: -2.4,       // 止损线-2.4%（收紧止损，保护本金）
     takeProfitPercent: 5,        // 止盈线+5%（降低目标，更容易达到）
     // 波段操作配置 - 新增
     bandTrade: {
@@ -147,10 +147,10 @@ const AI_CONFIG = {
         reducePercent: 25        // 每次减仓25%（降低减仓比例）
     },
     minOrderInterval: 300000,     // 最小下单间隔5分钟
-    sentimentThreshold: 7,       // 舆情买入阈值(>7分买入) - 已优化：从8分降至7分
+    sentimentThreshold: 8,       // 舆情买入阈值(>8分买入) - 收紧：从7分提高到8分
     sentimentSellThreshold: 3,   // 舆情卖出阈值(<3分卖出)
     minCashReserve: 30,          // 最小现金保留30%（强制保留更多现金）
-    tradeSize: 40,               // 单笔交易金额$40（追加投资后提升）
+    tradeSize: 32,               // 单笔交易金额$32（降低：从$40降至$32）
     blacklistedCoins: [...new Set(['BIO', 'KITE', 'HYPE', ...PERSISTENT_BLACKLIST])],
     maxPositionPercent: 35,      // 单币种最大占比35%（降低集中度）
     buyCooldownMinutes: 30,       // 默认买入冷却期30分钟
@@ -174,6 +174,20 @@ const AI_CONFIG = {
         lossHigh: 60,            // 亏损>1%，豁免60分钟
         lossMedium: 45,          // 亏损0-1%，豁免45分钟
         profit: 30               // 已盈利，豁免30分钟
+    },
+    // 抄底策略优化配置 - v2.4 新增
+    dipBuy: {
+        enabled: true,           // 启用优化抄底策略
+        minTrendScore: 8,        // 趋势评分≥8分（收紧：从7分提高到8分）
+        minBtcTrend: 6,          // BTC趋势≥6分（新增：大盘验证）
+        minEthTrend: 5,          // ETH趋势≥5分（新增：大盘验证）
+        rsiThreshold: 35,        // RSI<35（收紧：从40降到35）
+        volumeMultiplier: 2.0,   // 成交量>2倍平均（收紧：从1.2倍提高到2倍）
+        minConsecutiveBearish: 3, // 连续3根阴线（收紧：从2根提高到3根）
+        requireBullishReversal: true, // 需要第4根收阳（新增）
+        priceBelowMa5: true,     // 价格<MA5（新增）
+        priceBelowMa10: true,    // 价格<MA10（新增）
+        fearGreedIndex: 30       // 恐惧贪婪指数<30（新增）
     }
 };
 
@@ -1814,21 +1828,66 @@ async function aiTrading() {
             maxPositionPercentByTrend = 20; // 一般趋势，允许20%
         }
         
-        // 修复：降低买入门槛，从8分降到6分，配合低吸策略
+        // v2.4 优化：严格抄底条件，保护本金
+        const dipBuyConfig = AI_CONFIG.dipBuy;
+        let canBuyDip = false;
+        let dipBuyReason = '';
+        
+        if (dipBuyConfig.enabled) {
+            // 1. 趋势评分验证（≥8分）
+            const trendOk = coin.potential >= dipBuyConfig.minTrendScore;
+            
+            // 2. 大盘趋势验证（BTC≥6, ETH≥5）
+            const btcTrend = await getCoinTrend('BTC');
+            const ethTrend = await getCoinTrend('ETH');
+            const marketOk = btcTrend >= dipBuyConfig.minBtcTrend && ethTrend >= dipBuyConfig.minEthTrend;
+            
+            // 3. RSI超卖验证（<35）
+            const rsi = await getCoinRSI(coin.symbol);
+            const rsiOk = rsi < dipBuyConfig.rsiThreshold;
+            
+            // 4. 成交量放量验证（>2倍）
+            const volumeOk = coin.volumeRatio > dipBuyConfig.volumeMultiplier;
+            
+            // 5. 连续阴线验证（3根+第4根收阳）
+            const bearishOk = await checkConsecutiveBearishCandles(coin.instId, dipBuyConfig.minConsecutiveBearish);
+            
+            // 6. 价格位置验证（<MA5且<MA10）
+            const pricePosition = await getCoinPricePosition(coin.instId);
+            const priceOk = (!dipBuyConfig.priceBelowMa5 || pricePosition.belowMa5) && 
+                           (!dipBuyConfig.priceBelowMa10 || pricePosition.belowMa10);
+            
+            // 综合判断
+            canBuyDip = trendOk && marketOk && rsiOk && volumeOk && bearishOk && priceOk;
+            
+            if (canBuyDip) {
+                dipBuyReason = `严格抄底：趋势${coin.potential}分，BTC${btcTrend}分，ETH${ethTrend}分，RSI${rsi.toFixed(1)}，成交量${coin.volumeRatio?.toFixed(2)}x`;
+            } else {
+                const reasons = [];
+                if (!trendOk) reasons.push(`趋势${coin.potential}<${dipBuyConfig.minTrendScore}`);
+                if (!marketOk) reasons.push(`大盘弱BTC${btcTrend}/ETH${ethTrend}`);
+                if (!rsiOk) reasons.push(`RSI${rsi?.toFixed(1)}>=${dipBuyConfig.rsiThreshold}`);
+                if (!volumeOk) reasons.push(`成交量${coin.volumeRatio?.toFixed(2)}x<${dipBuyConfig.volumeMultiplier}x`);
+                if (!bearishOk) reasons.push(`阴线不足`);
+                if (!priceOk) reasons.push(`价格位置不对`);
+                console.log(`  ⏭️ 抄底条件不满足: ${reasons.join(', ')}`);
+            }
+        }
+        
+        // 严格买入条件：必须满足所有抄底条件
         if (!isBlacklisted && 
-            positionPercent <= maxPositionPercentByTrend &&  // 动态阈值
-            !justBought &&  // 5分钟内没有买入过
-            coin.potential >= 6 &&   // 修复：从8分降到6分
+            positionPercent <= maxPositionPercentByTrend &&
+            !justBought &&
+            canBuyDip &&  // v2.4：严格抄底条件
             cashPercent >= 30 &&
-            cooldown.canBuy &&  // 冷却期检查
+            cooldown.canBuy &&
             tradeLog.dailyTradeCount < AI_CONFIG.maxDailyTrades &&
             tradeLog.dailyVolume < AI_CONFIG.maxDailyVolume &&
             account.usdtAvailable >= AI_CONFIG.tradeSize) {
             
-            console.log(`  💡 发现机会！${coin.symbol} 趋势评分 ${coin.potential}/10，24h涨跌${coin.change24h?.toFixed(2) || 'N/A'}%，现金充足${cashPercent.toFixed(1)}%`);
+            console.log(`  💡 发现机会！${dipBuyReason}，现金充足${cashPercent.toFixed(1)}%`);
             decision.action = 'buy';
-            // 修复：买入理由改为低吸
-            decision.reason = `趋势看涨(${coin.potential}分)且回调中(${coin.change24h?.toFixed(2) || 'N/A'}%)，低吸建仓`;
+            decision.reason = dipBuyReason;
             decision.amount = AI_CONFIG.tradeSize / price;
             decision.usdtAmount = AI_CONFIG.tradeSize;
         } else {
@@ -1842,6 +1901,8 @@ async function aiTrading() {
                 console.log(`  🚫 ${coin.symbol}冷却期中，还需${cooldown.remainingMinutes}分钟`);
             } else if (cashPercent < 30) {
                 console.log(`  🚫 现金不足${cashPercent.toFixed(1)}%<30%，禁止买入`);
+            } else if (!canBuyDip) {
+                console.log(`  🚫 ${coin.symbol}不满足严格抄底条件，禁止买入`);
             }
         }
         
@@ -2236,6 +2297,121 @@ console.log(`  • 阴线买入: 连续2根阴线+趋势≥6分+价格<MA5`);
 console.log(`  • 横盘暂停: 趋势3-5分且波动率<0.5%暂停买入`);
 console.log(`  • 暴跌反弹: 24h跌幅>10%且趋势回升至≥6分`);
 console.log(`  • 趋势变盘: 从≥8分降至≤5分且横盘3周期减仓50%`);
+
+// ============================================
+// 辅助函数：获取币种趋势评分
+// ============================================
+async function getCoinTrend(symbol) {
+    try {
+        const instId = symbol + '-USDT';
+        const response = await request('/api/v5/market/ticker?instId=' + instId);
+        if (response.code !== '0' || !response.data || response.data.length === 0) {
+            return 0;
+        }
+        
+        const ticker = response.data[0];
+        const price = parseFloat(ticker.last);
+        
+        // 获取K线数据计算趋势
+        const candlesResponse = await request('/api/v5/market/candles?instId=' + instId + '&bar=1H&limit=20');
+        if (candlesResponse.code !== '0' || !candlesResponse.data) {
+            return 5; // 默认中性
+        }
+        
+        const candles = candlesResponse.data.map(c => ({
+            open: parseFloat(c[1]),
+            high: parseFloat(c[2]),
+            low: parseFloat(c[3]),
+            close: parseFloat(c[4]),
+            volume: parseFloat(c[5])
+        })).reverse(); // 时间顺序
+        
+        if (candles.length < 10) return 5;
+        
+        // 计算MA5, MA10
+        const ma5 = candles.slice(-5).reduce((a, b) => a + b.close, 0) / 5;
+        const ma10 = candles.slice(-10).reduce((a, b) => a + b.close, 0) / 10;
+        
+        // 简单趋势评分
+        let score = 5;
+        if (price > ma5 && ma5 > ma10) score += 3;
+        else if (price > ma5) score += 1;
+        else if (price < ma5 && ma5 < ma10) score -= 3;
+        else if (price < ma5) score -= 1;
+        
+        return Math.max(1, Math.min(10, score));
+    } catch (e) {
+        console.error(`获取${symbol}趋势失败:`, e.message);
+        return 5;
+    }
+}
+
+// ============================================
+// 辅助函数：获取币种RSI
+// ============================================
+async function getCoinRSI(symbol, period = 14) {
+    try {
+        const instId = symbol + '-USDT';
+        const response = await request('/api/v5/market/candles?instId=' + instId + '&bar=1H&limit=' + (period + 1));
+        if (response.code !== '0' || !response.data) {
+            return 50;
+        }
+        
+        const candles = response.data.map(c => parseFloat(c[4])).reverse();
+        if (candles.length < period + 1) return 50;
+        
+        // 计算RSI
+        let gains = 0, losses = 0;
+        for (let i = 1; i <= period; i++) {
+            const change = candles[i] - candles[i - 1];
+            if (change > 0) gains += change;
+            else losses += Math.abs(change);
+        }
+        
+        const avgGain = gains / period;
+        const avgLoss = losses / period;
+        
+        if (avgLoss === 0) return 100;
+        const rs = avgGain / avgLoss;
+        const rsi = 100 - (100 / (1 + rs));
+        
+        return rsi;
+    } catch (e) {
+        console.error(`获取${symbol}RSI失败:`, e.message);
+        return 50;
+    }
+}
+
+// ============================================
+// 辅助函数：获取币种价格位置（相对于均线）
+// ============================================
+async function getCoinPricePosition(symbol) {
+    try {
+        const instId = symbol + '-USDT';
+        const response = await request('/api/v5/market/candles?instId=' + instId + '&bar=1H&limit=20');
+        if (response.code !== '0' || !response.data) {
+            return { belowMa5: false, belowMa10: false };
+        }
+        
+        const candles = response.data.map(c => parseFloat(c[4])).reverse();
+        if (candles.length < 10) return { belowMa5: false, belowMa10: false };
+        
+        const price = candles[candles.length - 1];
+        const ma5 = candles.slice(-5).reduce((a, b) => a + b, 0) / 5;
+        const ma10 = candles.slice(-10).reduce((a, b) => a + b, 0) / 10;
+        
+        return {
+            belowMa5: price < ma5,
+            belowMa10: price < ma10,
+            price: price,
+            ma5: ma5,
+            ma10: ma10
+        };
+    } catch (e) {
+        console.error(`获取${symbol}价格位置失败:`, e.message);
+        return { belowMa5: false, belowMa10: false };
+    }
+}
 
 // 运行
 aiTrading().catch(console.error);

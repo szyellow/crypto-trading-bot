@@ -1,27 +1,51 @@
 {
   "summary": {
-    "totalTrades": 6,
-    "buyCount": 5,
-    "sellCount": 1,
+    "totalTrades": 15,
+    "buyCount": 9,
+    "sellCount": 6,
     "takeProfitSells": 1,
-    "stopLossSells": 0,
-    "winRate": "100.00",
+    "stopLossSells": 5,
+    "winRate": "16.67",
     "avgProfit": "2.41",
-    "avgLoss": "0.00",
-    "profitLossRatio": "0.00",
+    "avgLoss": "1.50",
+    "profitLossRatio": "1.61",
     "totalProfit": "2.41",
-    "totalLoss": "0.00",
-    "netProfit": "2.41"
+    "totalLoss": "7.50",
+    "netProfit": "-5.09"
   },
   "coinStats": {
     "CC": {
-      "buys": 3,
-      "sells": 1,
+      "buys": 4,
+      "sells": 2,
       "profit": 1,
-      "loss": 0
+      "loss": 1
     },
     "XRP": {
       "buys": 2,
+      "sells": 1,
+      "profit": 0,
+      "loss": 1
+    },
+    "SUI": {
+      "buys": 0,
+      "sells": 1,
+      "profit": 0,
+      "loss": 1
+    },
+    "BNB": {
+      "buys": 1,
+      "sells": 1,
+      "profit": 0,
+      "loss": 1
+    },
+    "ETH": {
+      "buys": 1,
+      "sells": 1,
+      "profit": 0,
+      "loss": 1
+    },
+    "BTC": {
+      "buys": 1,
       "sells": 0,
       "profit": 0,
       "loss": 0
@@ -29,10 +53,10 @@
   },
   "today": {
     "date": "2026-03-06",
-    "trades": 6,
-    "buys": 5,
-    "sells": 1,
-    "volume": "155.00"
+    "trades": 15,
+    "buys": 9,
+    "sells": 6,
+    "volume": "315.00"
   },
-  "lastUpdated": "2026-03-06T09:26:40.307Z"
+  "lastUpdated": "2026-03-06T16:11:04.569Z"
 }

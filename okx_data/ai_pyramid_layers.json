@@ -1,14 +1,1 @@
-{
-  "XRP": {
-    "layers": 1,
-    "firstBuyPrice": 1.4095,
-    "lastBuyPrice": 1.4095,
-    "totalInvested": 25
-  },
-  "CC": {
-    "layers": 1,
-    "firstBuyPrice": 0.15677,
-    "lastBuyPrice": 0.15677,
-    "totalInvested": 25
-  }
-}
+{}

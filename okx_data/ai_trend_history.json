@@ -1,18 +1,18 @@
 {
   "TRX": {
     "scores": [
+      4,
       6,
       6,
-      3,
-      3,
-      2,
-      2,
-      3,
+      7,
       6,
-      8,
-      6
+      5,
+      5,
+      7,
+      5,
+      4
     ],
-    "highTrendCount": 212
+    "highTrendCount": 216
   },
   "XAUT": {
     "scores": [
@@ -77,30 +77,30 @@
   "ETH": {
     "scores": [
       6,
-      6,
-      6,
-      6,
-      7,
-      6,
-      6,
       3,
       4,
+      6,
+      7,
+      7,
+      7,
+      5,
+      3,
       6
     ],
     "highTrendCount": 30
   },
   "BTC": {
     "scores": [
-      6,
-      6,
-      3,
       7,
       7,
       4,
       3,
       7,
       3,
-      5
+      5,
+      6,
+      7,
+      6
     ],
     "highTrendCount": 18
   },
@@ -121,7 +121,6 @@
   },
   "SUI": {
     "scores": [
-      10,
       8,
       10,
       6,
@@ -130,24 +129,25 @@
       2,
       2,
       3,
-      3
+      3,
+      2
     ],
     "highTrendCount": 64
   },
   "BNB": {
     "scores": [
       6,
+      5,
+      5,
       6,
-      5,
-      5,
+      6,
       7,
-      3,
-      4,
-      8,
-      8,
-      4
+      7,
+      6,
+      6,
+      5
     ],
-    "highTrendCount": 5
+    "highTrendCount": 7
   },
   "OKB": {
     "scores": [
@@ -181,32 +181,32 @@
   },
   "XRP": {
     "scores": [
-      10,
-      10,
-      10,
-      10,
-      10,
+      6,
+      6,
+      6,
       5,
       5,
-      7,
-      4,
+      6,
+      5,
+      3,
+      6,
       4
     ],
-    "highTrendCount": 25
+    "highTrendCount": 28
   },
   "CC": {
     "scores": [
-      6,
-      6,
-      6,
       4,
       4,
-      6,
-      3,
-      3,
       7,
-      7
+      7,
+      7,
+      7,
+      4,
+      6,
+      4,
+      5
     ],
-    "highTrendCount": 41
+    "highTrendCount": 56
   }
 }
