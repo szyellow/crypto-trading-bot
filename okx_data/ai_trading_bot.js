@@ -28,7 +28,8 @@ const {
     getCoinGeckoData,
     getCoinNewsSentiment,
     printCoinGeckoReport,
-    printNewsReport
+    printNewsReport,
+    resetRestartFlag
 } = require('./sentiment-client.js');
 
 // ============================================
@@ -1521,6 +1522,9 @@ async function aiTrading() {
     console.log('时间:', new Date().toISOString());
     console.log(`今日交易: ${tradeLog.dailyTradeCount}/${AI_CONFIG.maxDailyTrades} 笔`);
     console.log(`今日买入: ${tradeLog.dailyVolume}/${AI_CONFIG.maxDailyVolume} USDT (卖出不计入)`);
+    
+    // v2.3 新增：重置Sub-agent重启标志
+    resetRestartFlag();
     
     // 获取账户数据
     const account = await getAccountData();

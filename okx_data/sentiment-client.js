@@ -4,10 +4,14 @@
 // ============================================
 
 const http = require('http');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 
 const SERVICE_HOST = 'localhost';
 const SERVICE_PORT = 3456;
 const REQUEST_TIMEOUT = 5000; // 5秒超时
+let restartAttempted = false; // 防止重复重启
 
 // HTTP GET请求
 function httpGet(path) {
@@ -38,6 +42,45 @@ function httpGet(path) {
     });
 }
 
+// 重启Sub-agent服务
+async function restartService() {
+    if (restartAttempted) {
+        console.log('  ⏭️ 已尝试重启，跳过...');
+        return false;
+    }
+    
+    restartAttempted = true;
+    console.log('  🔄 正在重启Sub-agent服务...');
+    
+    try {
+        // 停止现有服务
+        await execAsync('pkill -f "market-sentiment-service.js" 2>/dev/null || true');
+        await new Promise(r => setTimeout(r, 2000));
+        
+        // 启动新服务
+        const { stdout, stderr } = await execAsync(
+            'cd /root/.openclaw/workspace/okx_data && nohup node market-sentiment-service.js > /dev/null 2>&1 &'
+        );
+        
+        // 等待服务启动
+        await new Promise(r => setTimeout(r, 3000));
+        
+        // 验证启动成功
+        const isRunning = await isServiceAvailable();
+        if (isRunning) {
+            console.log('  ✅ Sub-agent服务重启成功');
+            restartAttempted = false; // 重置标志
+            return true;
+        } else {
+            console.log('  ❌ Sub-agent服务重启失败');
+            return false;
+        }
+    } catch (e) {
+        console.log(`  ❌ 重启失败: ${e.message}`);
+        return false;
+    }
+}
+
 // 检查服务是否可用
 async function isServiceAvailable() {
     try {
@@ -48,24 +91,44 @@ async function isServiceAvailable() {
     }
 }
 
-// 获取CoinGecko数据
+// 获取CoinGecko数据（带自动重启）
 async function getCoinGeckoData(coin) {
     try {
         const response = await httpGet(`/coingecko?coin=${coin}`);
         return response.data || null;
     } catch (e) {
-        console.log(`  ⚠️ CoinGecko服务不可用: ${e.message}`);
+        console.log(`  ⚠️ CoinGecko服务不可用，尝试重启...`);
+        const restarted = await restartService();
+        if (restarted) {
+            // 重试一次
+            try {
+                const response = await httpGet(`/coingecko?coin=${coin}`);
+                return response.data || null;
+            } catch (e2) {
+                return null;
+            }
+        }
         return null;
     }
 }
 
-// 获取RSS新闻情绪
+// 获取RSS新闻情绪（带自动重启）
 async function getCoinNewsSentiment(coin) {
     try {
         const response = await httpGet(`/rss?coin=${coin}`);
         return response.sentiment || null;
     } catch (e) {
-        console.log(`  ⚠️ RSS服务不可用: ${e.message}`);
+        console.log(`  ⚠️ RSS服务不可用，尝试重启...`);
+        const restarted = await restartService();
+        if (restarted) {
+            // 重试一次
+            try {
+                const response = await httpGet(`/rss?coin=${coin}`);
+                return response.sentiment || null;
+            } catch (e2) {
+                return null;
+            }
+        }
         return null;
     }
 }
@@ -111,11 +174,17 @@ function printNewsReport(coin, sentiment) {
     }
 }
 
+// 重置重启标志（在每次交易检查开始时调用）
+function resetRestartFlag() {
+    restartAttempted = false;
+}
+
 module.exports = {
     isServiceAvailable,
     getCoinGeckoData,
     getCoinNewsSentiment,
     getCombinedSentiment,
     printCoinGeckoReport,
-    printNewsReport
+    printNewsReport,
+    resetRestartFlag
 };
