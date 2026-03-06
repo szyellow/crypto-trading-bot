@@ -4,7 +4,7 @@
 
 const https = require('https');
 
-const LUNARCRUSH_API_KEY = '66d14bx4f1ileleinb2qnt738immenrzfpf36rupi';
+const LUNARCRUSH_API_KEY = process.env.LUNARCRUSH_API_KEY || '';
 const LUNARCRUSH_BASE_URL = 'api.lunarcrush.com';
 
 // 缓存情绪数据（5分钟）

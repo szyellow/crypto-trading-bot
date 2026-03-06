@@ -77,7 +77,7 @@ function request(path, method = 'GET', body = null) {
 }
 
 // 导出函数供其他脚本使用
-module.exports = { request, sign, API_KEY, API_SECRET, PASSPHRASE };
+module.exports = { request, sign };
 
 // 如果直接运行，测试API
 if (require.main === module) {
