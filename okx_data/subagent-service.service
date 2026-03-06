@@ -1,0 +1,17 @@
+[Unit]
+Description=Crypto Trading Bot - Market Sentiment Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.openclaw/workspace/okx_data
+ExecStart=/usr/bin/node market-sentiment-service.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=subagent-service
+
+[Install]
+WantedBy=multi-user.target

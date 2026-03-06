@@ -53,17 +53,35 @@ async function restartService() {
     console.log('  🔄 正在重启Sub-agent服务...');
     
     try {
-        // 停止现有服务
-        await execAsync('pkill -f "market-sentiment-service.js" 2>/dev/null || true');
+        // 查找并停止现有服务
+        try {
+            const { stdout } = await execAsync('ps aux | grep "market-sentiment-service.js" | grep -v grep');
+            if (stdout) {
+                const lines = stdout.trim().split('\n');
+                for (const line of lines) {
+                    const parts = line.trim().split(/\s+/);
+                    const pid = parts[1];
+                    if (pid) {
+                        console.log(`  🛑 停止现有进程 PID: ${pid}`);
+                        await execAsync(`kill -9 ${pid} 2>/dev/null || true`);
+                    }
+                }
+            }
+        } catch (e) {
+            // 没有运行的进程，忽略错误
+        }
+        
         await new Promise(r => setTimeout(r, 2000));
         
         // 启动新服务
-        const { stdout, stderr } = await execAsync(
-            'cd /root/.openclaw/workspace/okx_data && nohup node market-sentiment-service.js > /dev/null 2>&1 &'
-        );
+        const cmd = 'cd /root/.openclaw/workspace/okx_data && nohup node market-sentiment-service.js > /dev/null 2>&1 & echo $!';
+        const { stdout: pid } = await execAsync(cmd);
+        const newPid = pid.trim();
+        
+        console.log(`  🚀 新服务PID: ${newPid}`);
         
         // 等待服务启动
-        await new Promise(r => setTimeout(r, 3000));
+        await new Promise(r => setTimeout(r, 5000));
         
         // 验证启动成功
         const isRunning = await isServiceAvailable();
