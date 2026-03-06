@@ -1,11 +1,6 @@
 // ============================================
-// AI自主交易系统 v2.2 - 增强版
-// 整合《短线六大必杀法》
-// - 金字塔建仓
-// - 阴线买入信号
-// - 横盘暂停机制
-// - 暴跌反弹捕捉
-// - 趋势变盘减仓
+// AI自主交易系统 v2.3 - 增强版
+// 整合《短线六大必杀法》+ CoinGecko情绪监控
 // ============================================
 
 const fs = require('fs');
@@ -24,6 +19,17 @@ const {
     checkCrashRebound,
     checkTrendReversal
 } = require('./strategy-enhanced.js');
+
+// ============================================
+// 导入市场情绪数据客户端 - v2.3 Sub-agent模式
+// ============================================
+const {
+    isServiceAvailable,
+    getCoinGeckoData,
+    getCoinNewsSentiment,
+    printCoinGeckoReport,
+    printNewsReport
+} = require('./sentiment-client.js');
 
 // ============================================
 // 紧急停止检查 - 新增
@@ -595,8 +601,8 @@ async function getAllTradableCoins() {
 // 分析币种趋势 - 增强版（趋势追踪网格策略）
 async function analyzeTrend(instId) {
     try {
-        // 获取K线数据 - 使用15分钟线获取更多细节
-        const candles15m = await request(`/api/v5/market/candles?instId=${instId}&bar=15m&limit=48`);
+        // 获取K线数据 - v2.3 修改：使用5分钟K线（币市更敏感，原15分钟）
+        const candles15m = await request(`/api/v5/market/candles?instId=${instId}&bar=5m&limit=50`);
         const candles1h = await request(`/api/v5/market/candles?instId=${instId}&bar=1H&limit=24`);
         
         if (candles15m.code !== '0' || !candles15m.data || candles15m.data.length < 20) {
@@ -919,6 +925,41 @@ async function makeDecision(coin, position, currentPrice, sentiment, account) {
     const pos = positions[coin];
     const positionValue = pos ? pos.value : 0;
     const positionPercent = totalEquity > 0 ? (positionValue / totalEquity * 100) : 0;
+    
+    // v2.3 新增：获取CoinGecko情绪数据（后台异步，不阻塞主流程）
+    // 只在有缓存时立即使用，无缓存时后台获取下次使用
+    const cgData = await getCoinGeckoData(coin);
+    if (cgData) {
+        printCoinGeckoReport(coin, cgData);
+        
+        // 融合CoinGecko情绪评分到趋势评分
+        const originalScore = sentiment.score;
+        const cgScore = cgData.trendScore;
+        
+        // 加权平均：技术面60% + 情绪面40%
+        sentiment.score = Math.round(originalScore * 0.6 + cgScore * 0.4);
+        
+        console.log(`  🔄 融合评分: 技术面${originalScore} + 情绪面${cgScore} → 综合${sentiment.score}/10`);
+        
+        // 如果CoinGecko显示极度看跌，额外警告
+        if (cgScore <= 3 && originalScore >= 6) {
+            console.log(`  ⚠️ 警告：技术面看涨但情绪面极度看跌，谨慎操作！`);
+            sentiment.score = Math.min(sentiment.score, 5);
+        }
+    }
+    
+    // v2.3 新增：获取RSS新闻情绪（后台异步）
+    const newsSentiment = await getCoinNewsSentiment(coin);
+    if (newsSentiment) {
+        printNewsReport(coin, newsSentiment);
+        
+        // 融合新闻情绪（权重20%）
+        const currentScore = sentiment.score;
+        const newsScore = newsSentiment.score;
+        sentiment.score = Math.round(currentScore * 0.8 + newsScore * 0.2);
+        
+        console.log(`  🔄 融合新闻情绪: 当前${currentScore} + 新闻${newsScore} → 综合${sentiment.score}/10`);
+    }
     
     console.log(`  当前持仓: ${positionValue.toFixed(2)} USD (${positionPercent.toFixed(1)}%)`);
     console.log(`  可用USDT: ${usdtAvailable.toFixed(2)}`);

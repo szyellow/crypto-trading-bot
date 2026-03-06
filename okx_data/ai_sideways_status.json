@@ -19,12 +19,12 @@
     "periods": 1,
     "startTime": 1772725486217
   },
-  "XRP": {
-    "periods": 13,
-    "startTime": 1772772307225
-  },
   "SUI": {
-    "periods": 5,
-    "startTime": 1772774707611
+    "periods": 3,
+    "startTime": 1772787426659
+  },
+  "XRP": {
+    "periods": 2,
+    "startTime": 1772788832302
   }
 }

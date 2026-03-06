@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "playwright": "^1.58.2"
+    "playwright": "^1.58.2",
+    "xml2js": "^0.6.2"
   }
 }

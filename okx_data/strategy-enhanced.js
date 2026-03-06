@@ -106,25 +106,55 @@ function resetPyramidLayers(coin) {
 }
 
 // ============================================
-// 阴线买入信号配置
+// 阴线买入信号配置 - v2.3 增强版（加密货币优化）
 // ============================================
 const BEARISH_CANDLE_CONFIG = {
     enabled: true,
     consecutiveCount: 2,     // 连续阴线数量
     minTrendScore: 6,        // 最小趋势评分
-    priceBelowMA: true       // 价格需低于MA5
+    priceBelowMA: true,      // 价格需低于MA5
+    // v2.3 新增：RSI超卖验证（针对加密货币调整）
+    rsiEnabled: true,
+    rsiPeriod: 14,
+    rsiOversold: 40,         // RSI超卖阈值（币市更宽松：40 vs 股市30）
+    // v2.3 新增：成交量验证
+    volumeEnabled: true,
+    volumeRatio: 1.2,        // 第二根阴线成交量需大于第一根的1.2倍
+    // v2.3 新增：K线周期（币市用更短周期）
+    candleInterval: '5m'     // 5分钟K线（币市更敏感）
 };
 
-// 检查连续阴线
+// 计算RSI
+function calculateRSI(prices, period = 14) {
+    if (prices.length < period + 1) return 50;
+    
+    let gains = 0;
+    let losses = 0;
+    
+    for (let i = prices.length - period; i < prices.length; i++) {
+        const change = prices[i] - prices[i - 1];
+        if (change > 0) gains += change;
+        else losses -= change;
+    }
+    
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
+}
+
+// 检查连续阴线 - v2.3 增强版（增加RSI和成交量验证）
 async function checkConsecutiveBearishCandles(instId, currentPrice) {
     if (!BEARISH_CANDLE_CONFIG.enabled) {
         return { isBearish: false };
     }
     
     try {
-        // 获取15分钟K线
-        const candles = await request(`/api/v5/market/candles?instId=${instId}&bar=15m&limit=10`);
-        if (candles.code !== '0' || !candles.data || candles.data.length < 5) {
+        // 获取5分钟K线（币市更敏感，原15分钟）
+        const candles = await request(`/api/v5/market/candles?instId=${instId}&bar=${BEARISH_CANDLE_CONFIG.candleInterval}&limit=50`);
+        if (candles.code !== '0' || !candles.data || candles.data.length < 20) {
             return { isBearish: false };
         }
         
@@ -132,7 +162,8 @@ async function checkConsecutiveBearishCandles(instId, currentPrice) {
             open: parseFloat(c[1]),
             high: parseFloat(c[2]),
             low: parseFloat(c[3]),
-            close: parseFloat(c[4])
+            close: parseFloat(c[4]),
+            volume: parseFloat(c[5])
         })).reverse();
         
         // 检查最近N根是否为阴线
@@ -146,14 +177,46 @@ async function checkConsecutiveBearishCandles(instId, currentPrice) {
         // 检查价格是否低于MA5
         const belowMA = currentPrice < ma5;
         
-        if (isAllBearish && belowMA) {
+        // v2.3 新增：RSI超卖验证（币市阈值40更宽松）
+        let rsiCheck = true;
+        let rsiValue = 50;
+        if (BEARISH_CANDLE_CONFIG.rsiEnabled) {
+            rsiValue = calculateRSI(prices, BEARISH_CANDLE_CONFIG.rsiPeriod);
+            rsiCheck = rsiValue < BEARISH_CANDLE_CONFIG.rsiOversold;
+            console.log(`  📊 RSI验证: ${rsiValue.toFixed(1)} (币市阈值<${BEARISH_CANDLE_CONFIG.rsiOversold}，股市<30) ${rsiCheck ? '✅超卖' : '❌未超卖'}`);
+        }
+        
+        // v2.3 新增：成交量验证（放量下跌）
+        let volumeCheck = true;
+        let volumeRatio = 1;
+        if (BEARISH_CANDLE_CONFIG.volumeEnabled && recentCandles.length >= 2) {
+            const vol1 = recentCandles[0].volume;
+            const vol2 = recentCandles[1].volume;
+            volumeRatio = vol2 / vol1;
+            volumeCheck = volumeRatio >= BEARISH_CANDLE_CONFIG.volumeRatio;
+            console.log(`  📊 成交量验证: ${volumeRatio.toFixed(2)}x (阈值>${BEARISH_CANDLE_CONFIG.volumeRatio}) ${volumeCheck ? '✅放量' : '❌未放量'}`);
+        }
+        
+        if (isAllBearish && belowMA && rsiCheck && volumeCheck) {
             const dropPercent = ((recentCandles[0].open - recentCandles[recentCandles.length-1].close) / recentCandles[0].open * 100);
-            console.log(`  📉 阴线买入信号：连续${BEARISH_CANDLE_CONFIG.consecutiveCount}根阴线，跌幅${dropPercent.toFixed(2)}%，价格$${currentPrice.toFixed(4)} < MA5 $${ma5.toFixed(4)}`);
+            console.log(`  ✅ 阴线买入信号确认：连续${BEARISH_CANDLE_CONFIG.consecutiveCount}根阴线，RSI${rsiValue.toFixed(1)}超卖，成交量${volumeRatio.toFixed(2)}x放量`);
             return { 
                 isBearish: true, 
                 dropPercent,
-                ma5
+                rsi: rsiValue,
+                volumeRatio
             };
+        } else {
+            // v2.3 新增：详细记录未通过原因
+            const reasons = [];
+            if (!isAllBearish) reasons.push('非连续阴线');
+            if (!belowMA) reasons.push('价格未低于MA5');
+            if (!rsiCheck) reasons.push(`RSI未超卖(${rsiValue.toFixed(1)})`);
+            if (!volumeCheck) reasons.push(`成交量未放量(${volumeRatio.toFixed(2)}x)`);
+            
+            if (reasons.length > 0) {
+                console.log(`  ⏭️ 阴线买入信号未通过: ${reasons.join(', ')}`);
+            }
         }
         
         return { isBearish: false };

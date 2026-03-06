@@ -1,5 +1,27 @@
 const crypto = require('crypto');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
+
+// 加载 .env 文件
+function loadEnv() {
+    const envPath = path.join(__dirname, '.env');
+    if (fs.existsSync(envPath)) {
+        const envContent = fs.readFileSync(envPath, 'utf8');
+        envContent.split('\n').forEach(line => {
+            const match = line.match(/^([^=]+)=(.*)$/);
+            if (match) {
+                const key = match[1].trim();
+                const value = match[2].trim();
+                if (!process.env[key]) {
+                    process.env[key] = value;
+                }
+            }
+        });
+    }
+}
+
+loadEnv();
 
 const API_KEY = process.env.OKX_API_KEY || '';
 const API_SECRET = process.env.OKX_SECRET_KEY || '';
