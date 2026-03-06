@@ -230,7 +230,7 @@ async function evolveStrategy(tradeLog) {
         console.log('\n🔄 策略自动调整:');
         adjustments.forEach(a => console.log(`  • ${a}`));
         console.log('\n📋 参数更新:');
-        console.log(`  止损: ${currentParams.stopLoss}% → ${newParams.stopLoss}%`);
+        console.log(`  止损: ${evolution.currentParams.stopLoss}% → ${newParams.stopLoss}%`);
         console.log(`  止盈: ${evolution.currentParams.takeProfit}% → ${newParams.takeProfit}%`);
         console.log(`  最大持仓: ${evolution.currentParams.maxPositions} → ${newParams.maxPositions}`);
         console.log(`  单笔金额: $${evolution.currentParams.tradeSize} → $${newParams.tradeSize}`);

@@ -1,7 +1,7 @@
 {
-  "apiKey": "08c39092-340c-4254-b10d-dbf454472eff",
-  "secretKey": "C211F2DA7260A48B288490B003011C74",
-  "passphrase": "25588433aA.",
+  "apiKey": "${OKX_API_KEY}",
+  "secretKey": "${OKX_SECRET_KEY}",
+  "passphrase": "${OKX_PASSPHRASE}",
   "baseUrl": "https://www.okx.com",
   "isSimulation": false
 }

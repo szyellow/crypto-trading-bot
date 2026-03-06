@@ -165,3 +165,73 @@ Always use git-filter-repo or BFG Repo-Cleaner to remove sensitive files from hi
 - **Notes**: Repository is now secure. Sensitive files excluded from future commits.
 
 ---
+
+## [LRN-20260305-001] Strategy Fix - Buy High Sell Low Problem
+
+**Logged**: 2026-03-05T02:26:00Z
+**Priority**: high
+**Status**: resolved
+**Area**: backend
+
+### Summary
+The trading bot was buying at highs and selling at lows due to chasing trends. Fixed by switching to "buy low sell high" strategy.
+
+### Changes Made
+1. **Buy Condition**: Changed from `trend >= 8` to `trend >= 6` with `24h change -10%~5%`
+   - Before: Buy when trend is strong (chasing)
+   - After: Buy during pullback (dip buying)
+
+2. **Stop-Loss Protection**: Added 1-hour holding period before allowing stop-loss
+   - Prevents selling during normal pullback after entry
+
+3. **Gold Stablecoins**: Excluded XAUT/PAXG from new buys, reduced take-profit to 0.2%
+   - These have <1% daily volatility, 10% target was unrealistic
+
+### Key Learning
+Don't chase trends. Buy during pullbacks when trend is still bullish but price has dipped.
+
+### Metadata
+- Source: user_feedback
+- Related Files: okx_data/ai_trading_bot.js
+- Tags: strategy, buy-low-sell-high, trend-following, correction
+
+### Resolution
+- **Resolved**: 2026-03-05T02:26:00Z
+- **Notes**: XAUT and PAXG successfully sold at +0.2% take-profit. BNB still holding.
+
+---
+
+## [LRN-20260305-002] Data Issue - Price Not Updating
+
+**Logged**: 2026-03-05T02:01:00Z
+**Priority**: high
+**Status**: resolved
+**Area**: backend
+
+### Summary
+User reported prices not updating (same values across multiple checks). Investigation showed data was actually real-time.
+
+### Root Cause
+- OKX API returns real-time data with timestamps
+- BNB, XAUT, PAXG prices were genuinely flat (market sideways)
+- Not a caching issue
+
+### Fix Applied
+Added timestamp logging to `getMarketPrice()`:
+```javascript
+console.log(`  📡 ${instId} 实时价格: $${price} (OKX时间: ${new Date(parseInt(ts)).toLocaleTimeString()})`);
+```
+
+### Key Learning
+Always verify data freshness with timestamps before assuming caching issues.
+
+### Metadata
+- Source: user_feedback
+- Related Files: okx_data/ai_trading_bot.js, okx_data/okx-api.js
+- Tags: data-integrity, api, debugging
+
+### Resolution
+- **Resolved**: 2026-03-05T02:13:00Z
+- **Notes**: Confirmed OKX timestamps update every second. Market was genuinely sideways.
+
+---

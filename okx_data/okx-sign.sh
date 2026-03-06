@@ -1,10 +1,16 @@
 #!/bin/bash
 # OKX API 签名脚本
 # 用法: ./okx-sign.sh <method> <path> [body]
+# 需要设置环境变量: OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE
 
-API_KEY="08c39092-340c-4254-b10d-dbf454472eff"
-API_SECRET="C211F2DA7260A48B288490B003011C74"
-PASSPHRASE="25588433aA."
+API_KEY="${OKX_API_KEY}"
+API_SECRET="${OKX_SECRET_KEY}"
+PASSPHRASE="${OKX_PASSPHRASE}"
+
+if [ -z "$API_KEY" ] || [ -z "$API_SECRET" ] || [ -z "$PASSPHRASE" ]; then
+    echo "Error: 请设置环境变量 OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE"
+    exit 1
+fi
 
 METHOD=${1:-GET}
 PATH=${2:-/api/v5/account/balance}

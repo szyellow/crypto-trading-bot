@@ -560,6 +560,11 @@ function checkBuyCooldown(coin, trendScore = 5) {
     return { canBuy: true, remainingMinutes: 0, cooldownMinutes };
 }
 
+// 获取最后买入时间
+function getLastBuyTime(coin) {
+    return tradeLog.lastBuyTime && tradeLog.lastBuyTime[coin];
+}
+
 // 获取所有可交易币种
 async function getAllTradableCoins() {
     try {
@@ -891,7 +896,10 @@ async function getAccountData() {
 async function getMarketPrice(instId) {
     try {
         const ticker = await request(`/api/v5/market/ticker?instId=${instId}`);
-        return parseFloat(ticker.data[0].last);
+        const price = parseFloat(ticker.data[0].last);
+        const ts = ticker.data[0].ts;
+        console.log(`  📡 ${instId} 实时价格: $${price} (OKX时间: ${new Date(parseInt(ts)).toLocaleTimeString()})`);
+        return price;
     } catch(e) {
         console.error(`获取${instId}价格失败:`, e.message);
         return null;
@@ -932,7 +940,14 @@ async function makeDecision(coin, position, currentPrice, sentiment, account) {
     // 计算动态波段
     const dynamicBands = await calculateDynamicBands(coin, currentPrice);
     const stopLossPercent = dynamicBands.stopLoss;
-    const takeProfitPercent = dynamicBands.takeProfit;
+    let takeProfitPercent = dynamicBands.takeProfit;
+    
+    // 修复：黄金稳定币(XAUT/PAXG)波动性低，降低止盈目标
+    const isGoldStablecoin = ['XAUT', 'PAXG'].includes(coin);
+    if (isGoldStablecoin) {
+        takeProfitPercent = 0.2; // 黄金稳定币止盈0.2%即可
+        console.log(`  🥇 黄金稳定币特殊处理：止盈目标降至${takeProfitPercent}%`);
+    }
     
     // 决策逻辑
     let decision = { action: 'hold', reason: '' };
@@ -989,9 +1004,16 @@ async function makeDecision(coin, position, currentPrice, sentiment, account) {
         
         // 智能止损 - 根据趋势评分决定是否止损
         if (pnlPercent <= smartStopLoss) {
-            // 如果趋势评分很高，考虑补仓而不是止损
-            if (sentiment.score >= 8 && positionPercent < 15 && usdtAvailable >= 25) {
-                // 金字塔补仓降低成本
+            // 检查持仓时间 - 刚买入1小时内不止损（给币时间回调）
+            const lastBuyTime = getLastBuyTime(coin);
+            const holdingTimeMinutes = lastBuyTime ? (Date.now() - new Date(lastBuyTime).getTime()) / (1000 * 60) : null;
+            
+            // 修复：如果没有买入时间记录（如手动买入），允许止损
+            if (holdingTimeMinutes !== null && holdingTimeMinutes < 60) {
+                console.log(`  ⏳ 刚买入${holdingTimeMinutes.toFixed(0)}分钟，亏损${pnlPercent.toFixed(2)}%可能是正常回调，暂不止损`);
+                // 不执行止损，继续观察
+            } else if (sentiment.score >= 8 && positionPercent < 15 && usdtAvailable >= 25) {
+                // 如果趋势评分很高，考虑补仓而不是止损
                 const pyramidAmount = calculatePyramidBuyAmount(coin, currentPrice, pos.avgPrice);
                 if (pyramidAmount > 0) {
                     decision = { 
@@ -1002,18 +1024,18 @@ async function makeDecision(coin, position, currentPrice, sentiment, account) {
                     };
                     return decision;
                 }
+            } else {
+                // 否则执行止损
+                const sellAmount = pos.amount * 0.995;
+                resetPyramidLayers(coin); // v2.2 新增：重置金字塔层级
+                decision = { 
+                    action: 'sell', 
+                    reason: `触发智能止损！亏损${pnlPercent.toFixed(2)}% (止损线${smartStopLoss.toFixed(2)}%)，加入黑名单`,
+                    amount: sellAmount,
+                    addToBlacklist: true
+                };
+                return decision;
             }
-            
-            // 否则执行止损
-            const sellAmount = pos.amount * 0.995;
-            resetPyramidLayers(coin); // v2.2 新增：重置金字塔层级
-            decision = { 
-                action: 'sell', 
-                reason: `触发智能止损！亏损${pnlPercent.toFixed(2)}% (止损线${smartStopLoss.toFixed(2)}%)，加入黑名单`,
-                amount: sellAmount,
-                addToBlacklist: true
-            };
-            return decision;
         }
         
         // 止盈 - 使用动态计算的止盈线（趋势追踪网格逻辑）
@@ -1505,7 +1527,12 @@ async function aiTrading() {
         // 筛选未持仓的高潜力币种（排除黑名单）
         const candidates = [];
         for (const coin of allCoins) {
-            if (!holdingCoins.includes(coin.symbol) && coin.symbol !== 'USDT' && !AI_CONFIG.blacklistedCoins.includes(coin.symbol)) {
+            // 修复：排除黄金稳定币(XAUT/PAXG)，波动性太低
+            const goldStablecoins = ['XAUT', 'PAXG'];
+            if (!holdingCoins.includes(coin.symbol) 
+                && coin.symbol !== 'USDT' 
+                && !AI_CONFIG.blacklistedCoins.includes(coin.symbol)
+                && !goldStablecoins.includes(coin.symbol)) {
                 const trend = await analyzeTrend(coin.instId);
                 candidates.push({
                     ...coin,
@@ -1535,22 +1562,29 @@ async function aiTrading() {
             console.log(`  ${trendIcon} ${c.symbol}: 评分${c.trendScore}/10 ${trendText}${techIndicators}, 24h涨跌${c.change24h.toFixed(2)}%, 成交量$${(c.vol24h * c.price / 1000000).toFixed(2)}M`);
         }
         
-        // 严格筛选条件（趋势追踪风格）
+        // 严格筛选条件（低吸策略 - 修复追涨杀跌问题）
         const strictCandidates = candidates.filter(c => {
-            // 条件1: 趋势必须是看涨
+            // 条件1: 排除稳定币（USDC, USDT, USDG等）
+            const stablecoins = ['USDC', 'USDT', 'USDG', 'DAI', 'TUSD', 'FDUSD'];
+            const isStablecoin = stablecoins.includes(c.symbol);
+            
+            // 条件2: 趋势必须是看涨（但不用太强，给回调留空间）
             const isBullish = c.trend === 'bullish';
-            // 条件2: 趋势评分必须 >= 8分（更严格）
-            const highScore = c.trendScore >= 8;
-            // 条件3: 24h涨跌必须在合理范围（不要暴涨暴跌的）
-            const reasonableChange = c.change24h > -5 && c.change24h < 15;
-            // 条件4: 成交量要足够（至少500万USDT）
+            // 条件3: 趋势评分 >= 6分即可（不要太强，避免追高）
+            const reasonableScore = c.trendScore >= 6;
+            // 条件4: 关键！24h涨跌必须是负的或微涨（-10% ~ +5%），避免追高
+            // 负的表示回调中，正是买入好时机
+            const isPullback = c.change24h > -10 && c.change24h < 5;
+            // 条件5: 成交量要足够（至少500万USDT）
             const enoughVolume = (c.vol24h * c.price) > 5000000;
-            // 条件5: 价格不要太低（避免垃圾币）
+            // 条件6: 价格不要太低（避免垃圾币）
             const reasonablePrice = c.price > 0.1;
             
-            const passed = isBullish && highScore && reasonableChange && enoughVolume && reasonablePrice;
+            const passed = !isStablecoin && isBullish && reasonableScore && isPullback && enoughVolume && reasonablePrice;
             if (passed) {
-                console.log(`  ✅ ${c.symbol} 通过严格筛选: 看涨+高分+合理涨跌+充足成交量`);
+                console.log(`  ✅ ${c.symbol} 通过低吸筛选: 看涨+回调中(${c.change24h.toFixed(2)}%)+充足成交量`);
+            } else if (isStablecoin) {
+                console.log(`  ⏭️ ${c.symbol} 是稳定币，跳过`);
             }
             return passed;
         });
@@ -1634,7 +1668,13 @@ async function aiTrading() {
                 
                 // 根据趋势调整止盈比例
                 let newTpPercent;
-                if (trend.score >= 8) {
+                
+                // 修复：黄金稳定币特殊处理，保持0.2%止盈
+                const isGoldStablecoin = ['XAUT', 'PAXG'].includes(coin.symbol);
+                if (isGoldStablecoin) {
+                    newTpPercent = 0.2; // 黄金稳定币保持0.2%止盈
+                    console.log(`  🥇 ${coin.symbol}是黄金稳定币，保持0.2%止盈目标`);
+                } else if (trend.score >= 8) {
                     newTpPercent = 15; // 强趋势，扩大止盈
                 } else if (trend.score >= 5) {
                     newTpPercent = 10; // 中等趋势，标准止盈
@@ -1656,7 +1696,17 @@ async function aiTrading() {
                 console.log(`  ⚠️ 止盈单不存在，重新挂单...`);
                 const position = account.positions[coin.symbol];
                 if (position && position.amount > 0) {
-                    const bands = await calculateDynamicBands(coin.symbol, price);
+                    // 修复：黄金稳定币使用0.2%止盈，其他使用动态波段
+                    const isGoldStablecoin = ['XAUT', 'PAXG'].includes(coin.symbol);
+                    let tpPercent;
+                    if (isGoldStablecoin) {
+                        tpPercent = 0.2;
+                        console.log(`  🥇 ${coin.symbol}是黄金稳定币，使用0.2%止盈目标`);
+                    } else {
+                        const bands = await calculateDynamicBands(coin.symbol, price);
+                        tpPercent = bands.takeProfit;
+                    }
+                    
                     // 修复：使用 avgPrice 而不是 costPrice
                     const costPrice = position.avgPrice || price;
                     // 方案1：止盈单只挂50%仓位，保留50%用于动态止盈
@@ -1665,10 +1715,10 @@ async function aiTrading() {
                         coin.symbol,
                         tpAmount,
                         costPrice,
-                        bands.takeProfit
+                        tpPercent
                     );
                     if (tpResult.success) {
-                        console.log(`  ✅ 止盈单已挂出50%仓位(${tpAmount.toFixed(6)}个)，保留50%用于动态止盈`);
+                        console.log(`  ✅ 止盈单已挂出50%仓位(${tpAmount.toFixed(6)}个) @ ${tpPercent}%止盈`);
                     }
                 }
             }
@@ -1719,19 +1769,21 @@ async function aiTrading() {
             maxPositionPercentByTrend = 20; // 一般趋势，允许20%
         }
         
+        // 修复：降低买入门槛，从8分降到6分，配合低吸策略
         if (!isBlacklisted && 
             positionPercent <= maxPositionPercentByTrend &&  // 动态阈值
             !justBought &&  // 5分钟内没有买入过
-            coin.potential >= 8 && 
+            coin.potential >= 6 &&   // 修复：从8分降到6分
             cashPercent >= 30 &&
             cooldown.canBuy &&  // 冷却期检查
             tradeLog.dailyTradeCount < AI_CONFIG.maxDailyTrades &&
             tradeLog.dailyVolume < AI_CONFIG.maxDailyVolume &&
             account.usdtAvailable >= AI_CONFIG.tradeSize) {
             
-            console.log(`  💡 发现机会！${coin.symbol} 趋势评分 ${coin.potential}/10，现金充足${cashPercent.toFixed(1)}%，持仓${positionPercent.toFixed(1)}%<=${maxPositionPercentByTrend}%，冷却期OK`);
+            console.log(`  💡 发现机会！${coin.symbol} 趋势评分 ${coin.potential}/10，24h涨跌${coin.change24h?.toFixed(2) || 'N/A'}%，现金充足${cashPercent.toFixed(1)}%`);
             decision.action = 'buy';
-            decision.reason = `趋势强劲(${coin.potential}分)且现金充足(${cashPercent.toFixed(1)}%)，低吸建仓`;
+            // 修复：买入理由改为低吸
+            decision.reason = `趋势看涨(${coin.potential}分)且回调中(${coin.change24h?.toFixed(2) || 'N/A'}%)，低吸建仓`;
             decision.amount = AI_CONFIG.tradeSize / price;
             decision.usdtAmount = AI_CONFIG.tradeSize;
         } else {

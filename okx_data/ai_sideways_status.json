@@ -11,8 +11,20 @@
     "periods": 1,
     "startTime": 1772629065899
   },
-  "TRX": {
-    "periods": 3,
-    "startTime": 1772633092043
+  "BNB": {
+    "periods": 1,
+    "startTime": 1772698800525
+  },
+  "ADA": {
+    "periods": 1,
+    "startTime": 1772725486217
+  },
+  "XRP": {
+    "periods": 13,
+    "startTime": 1772772307225
+  },
+  "SUI": {
+    "periods": 5,
+    "startTime": 1772774707611
   }
 }

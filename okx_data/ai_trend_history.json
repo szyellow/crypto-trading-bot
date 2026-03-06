@@ -1,48 +1,48 @@
 {
   "TRX": {
     "scores": [
-      7,
-      7,
-      9,
-      9,
-      9,
       9,
       10,
-      9,
-      5,
-      5
-    ],
-    "highTrendCount": 119
-  },
-  "XAUT": {
-    "scores": [
+      10,
       8,
-      6,
-      7,
-      5,
-      6,
-      7,
-      7,
+      9,
+      9,
       6,
       6,
-      6
-    ],
-    "highTrendCount": 85
-  },
-  "PAXG": {
-    "scores": [
-      6,
-      5,
-      5,
-      7,
-      7,
-      6,
-      6,
-      7,
       7,
       7
     ],
-    "highTrendCount": 15
+    "highTrendCount": 198
+  },
+  "XAUT": {
+    "scores": [
+      10,
+      10,
+      9,
+      10,
+      10,
+      10,
+      10,
+      8,
+      8,
+      6
+    ],
+    "highTrendCount": 111
+  },
+  "PAXG": {
+    "scores": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      9,
+      8,
+      9,
+      7,
+      8
+    ],
+    "highTrendCount": 42
   },
   "NEAR": {
     "scores": [
@@ -106,17 +106,107 @@
   },
   "ADA": {
     "scores": [
+      8,
+      10,
+      10,
+      10,
+      10,
+      10,
+      5,
+      5,
       7,
+      4
+    ],
+    "highTrendCount": 12
+  },
+  "SUI": {
+    "scores": [
+      10,
+      8,
+      6,
+      6,
+      6,
+      5,
+      5,
+      6,
+      5,
+      5
+    ],
+    "highTrendCount": 47
+  },
+  "BNB": {
+    "scores": [
+      6,
+      6,
+      5,
+      5,
       7,
-      9,
-      7,
+      3,
       4,
+      8,
+      8,
+      4
+    ],
+    "highTrendCount": 5
+  },
+  "OKB": {
+    "scores": [
+      10,
+      10,
+      9,
+      10,
+      10,
+      10,
+      7,
+      8,
+      7,
+      7
+    ],
+    "highTrendCount": 31
+  },
+  "SOL": {
+    "scores": [
+      8,
+      8,
+      8,
+      7,
+      7,
+      7,
+      7,
+      8,
+      7,
+      7
+    ],
+    "highTrendCount": 66
+  },
+  "XRP": {
+    "scores": [
+      5,
+      6,
+      6,
+      5,
+      6,
+      5,
+      5,
       6,
       4,
-      4,
-      9,
-      8
+      4
     ],
     "highTrendCount": 4
+  },
+  "CC": {
+    "scores": [
+      10,
+      9,
+      9,
+      8,
+      10,
+      9,
+      9,
+      9,
+      9,
+      9
+    ],
+    "highTrendCount": 37
   }
 }

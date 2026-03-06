@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 const https = require('https');
 
-const API_KEY = '08c39092-340c-4254-b10d-dbf454472eff';
-const API_SECRET = 'C211F2DA7260A48B288490B003011C74';
-const PASSPHRASE = '25588433aA.';
+const API_KEY = process.env.OKX_API_KEY || '';
+const API_SECRET = process.env.OKX_SECRET_KEY || '';
+const PASSPHRASE = process.env.OKX_PASSPHRASE || '';
 
 function sign(timestamp, method, path, body = '') {
     const message = timestamp + method + path + body;
@@ -15,17 +15,23 @@ function request(path, method = 'GET', body = null) {
         const timestamp = new Date().toISOString();
         const bodyStr = body ? JSON.stringify(body) : '';
         
+        // 添加随机参数绕过缓存
+        const cacheBuster = `_cb=${Date.now()}`;
+        const pathWithCache = path.includes('?') ? `${path}&${cacheBuster}` : `${path}?${cacheBuster}`;
+        
         const options = {
             hostname: 'www.okx.com',
             port: 443,
-            path: path,
+            path: pathWithCache,
             method: method,
             headers: {
                 'OK-ACCESS-KEY': API_KEY,
-                'OK-ACCESS-SIGN': sign(timestamp, method, path, bodyStr),
+                'OK-ACCESS-SIGN': sign(timestamp, method, pathWithCache, bodyStr),
                 'OK-ACCESS-TIMESTAMP': timestamp,
                 'OK-ACCESS-PASSPHRASE': PASSPHRASE,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
             }
         };
 
