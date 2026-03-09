@@ -1,6 +1,43 @@
 # AI 自主加密货币交易系统 v2.4
 
-一个基于 OKX 交易所 API 的智能加密货币交易机器人，整合多种交易策略和情绪分析。
+一个基于 OKX 交易所 API 的智能加密货币交易机器人，采用多 Agent 架构，整合多种交易策略和情绪分析。
+
+## 🏗️ 多 Agent 架构
+
+本系统采用模块化多 Agent 设计，各组件职责明确，协同工作：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    主交易程序 (ai_trading_bot.js)              │
+│                      - 核心决策引擎                           │
+│                      - 策略执行与协调                         │
+└──────────────┬──────────────────────────────────────────────┘
+               │
+    ┌──────────┼──────────┬──────────┬──────────┐
+    │          │          │          │          │
+    ▼          ▼          ▼          ▼          ▼
+┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│情绪数据 │ │数据提醒│ │交易统计│ │策略进化│ │通知代理│
+│客户端  │ │Sub-Agent│ │模块   │ │模块   │ │       │
+│       │ │       │ │       │ │       │ │       │
+│sentiment│ │data-  │ │trade- │ │strategy│ │notifi-│
+│-client │ │reminder│ │stats │ │-evolution│ │cation │
+│       │ │-agent  │ │       │ │       │ │-agent │
+└────────┘ └────────┘ └────────┘ └────────┘ └────────┘
+```
+
+### Agent 职责说明
+
+| Agent | 文件 | 职责 |
+|-------|------|------|
+| **主交易程序** | `ai_trading_bot.js` | 核心决策引擎，执行买卖逻辑，协调各 Sub-agent |
+| **情绪数据客户端** | `sentiment-client.js` | 独立服务，获取 CoinGecko 和新闻情绪数据 |
+| **数据提醒 Agent** | `data-reminder-agent.js` | 监控数据新鲜度，防止重复显示旧数据 |
+| **交易统计模块** | `trade-stats.js` | 记录和分析交易数据，生成统计报告 |
+| **策略进化模块** | `strategy-evolution.js` | 根据交易结果自动优化策略参数 |
+| **通知代理** | `notification-agent.js` | 处理各类通知和报警 |
+| **交易代理** | `trading-agent.js` | 封装交易执行逻辑 |
+| **协调器** | `coordinator.js` | 协调多个 Agent 之间的工作流 |
 
 ## 🚀 主要特性
 
@@ -28,125 +65,17 @@
 - **稳定币过滤**: 自动跳过 USDC、USDT 等稳定币
 - **紧急停止**: 支持 EMERGENCY_STOP.flag 文件紧急停止系统
 
-## 🏗️ 多 Agent 架构
-
-本系统采用多 Agent 协作架构，各 Agent 职责明确，通过模块化设计实现高效协作：
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    AI Trading System                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────────────┐    ┌─────────────────┐                │
-│  │  Main Trading   │    │   Coordinator   │                │
-│  │     Agent       │◄──►│     Agent       │                │
-│  │ (ai_trading_bot)│    │ (coordinator.js)│                │
-│  └────────┬────────┘    └─────────────────┘                │
-│           │                                                 │
-│           ▼                                                 │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Sub-Agent Services                      │   │
-│  ├─────────────────┬─────────────────┬─────────────────┤   │
-│  │  Sentiment      │  Data Reminder  │  Notification   │   │
-│  │    Client       │     Agent       │     Agent       │   │
-│  │(sentiment-     │(data-reminder-  │(notification-   │   │
-│  │  client.js)     │   agent.js)     │   agent.js)     │   │
-│  └─────────────────┴─────────────────┴─────────────────┘   │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Strategy Modules                        │   │
-│  ├─────────────────┬─────────────────┬─────────────────┤   │
-│  │   Enhanced      │   Evolution     │     Stats       │   │
-│  │   Strategy      │   Strategy      │   (trade-stats) │   │
-│  │(strategy-      │(strategy-      │                 │   │
-│  │ enhanced.js)    │ evolution.js)   │                 │   │
-│  └─────────────────┴─────────────────┴─────────────────┘   │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Agent 职责说明
-
-#### 1. 主交易 Agent (`ai_trading_bot.js`)
-- **职责**: 核心交易逻辑执行
-- **功能**:
-  - 市场扫描和趋势分析
-  - 买入/卖出决策执行
-  - 止盈止损订单管理
-  - 持仓监控和调整
-- **触发**: 每 5 分钟运行一次
-
-#### 2. 情绪数据 Client (`sentiment-client.js`)
-- **职责**: 市场情绪数据获取和处理
-- **功能**:
-  - CoinGecko API 数据获取
-  - 新闻情绪分析
-  - 情绪数据缓存和分发
-  - 独立服务避免主程序阻塞
-- **模式**: Sub-agent 独立进程
-
-#### 3. 数据提醒 Agent (`data-reminder-agent.js`)
-- **职责**: 确保数据新鲜度
-- **功能**:
-  - 报告时间戳追踪
-  - 数据获取清单检查
-  - 防止重复显示旧数据
-  - 提醒主程序获取最新数据
-- **触发**: 每次主程序运行时检查
-
-#### 4. 协调器 Agent (`coordinator.js`)
-- **职责**: 多 Agent 协调和任务分发
-- **功能**:
-  - 任务调度
-  - Agent 状态监控
-  - 错误处理和恢复
-
-#### 5. 交易 Agent (`trading-agent.js`)
-- **职责**: 具体交易操作执行
-- **功能**:
-  - 订单创建和管理
-  - 仓位计算
-  - 风险控制执行
-
-#### 6. 通知 Agent (`notification-agent.js`)
-- **职责**: 消息通知管理
-- **功能**:
-  - 交易报告生成
-  - 飞书/其他渠道通知
-  - 告警消息发送
-
-### 数据流
-
-```
-1. 主交易 Agent 启动
-   │
-   ▼
-2. 调用情绪数据 Client 获取市场情绪
-   │
-   ▼
-3. 调用数据提醒 Agent 检查数据新鲜度
-   │
-   ▼
-4. 执行交易策略分析
-   │
-   ▼
-5. 调用交易 Agent 执行买卖操作
-   │
-   ▼
-6. 调用通知 Agent 发送报告
-```
-
 ## 📁 项目结构
 
 ```
 okx_data/
 ├── Core Agents:
-├── ai_trading_bot.js           # 主交易程序 (核心 Agent)
+├── ai_trading_bot.js           # 主交易程序 (核心决策引擎)
 ├── sentiment-client.js         # 情绪数据客户端 (Sub-agent)
 ├── data-reminder-agent.js      # 数据提醒 Sub-agent
-├── coordinator.js              # 协调器模块
-├── trading-agent.js            # 交易代理模块
-├── notification-agent.js       # 通知代理模块
+├── trading-agent.js            # 交易代理
+├── notification-agent.js       # 通知代理
+├── coordinator.js              # 协调器
 │
 ├── Strategy Modules:
 ├── strategy-enhanced.js        # 增强策略模块
@@ -166,9 +95,12 @@ okx_data/
 ├── strategy_evolution.json     # 策略进化记录
 ├── trade_stats.json            # 交易统计数据
 ├── last-report-timestamp.json  # 上次报告时间戳
+├── data-reminder-config.json   # 数据提醒配置
+├── notification-agent-config.json  # 通知代理配置
 │
 └── Documentation:
-    ├── AGENT_ARCHITECTURE.md   # 代理架构文档
+    ├── README.md               # 本文件
+    ├── AGENT_ARCHITECTURE.md   # 代理架构详细文档
     ├── DATA_REMINDER_README.md # 数据提醒系统文档
     ├── BUGFIX_REPORT.md        # Bug 修复报告
     ├── COMPLETE_FIX.md         # 完整修复文档
@@ -264,6 +196,7 @@ rm EMERGENCY_STOP.flag
 - 新增数据提醒 Sub-agent
 - 优化止盈单管理逻辑
 - 修复多个边界条件 bug
+- 完善多 Agent 架构文档
 
 ### v2.3 (2026-03-08)
 - 新增 CoinGecko 情绪数据集成
