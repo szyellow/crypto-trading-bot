@@ -1,270 +1,235 @@
-# 🤖 Crypto Trading Bot
+# AI 自主加密货币交易系统 v2.4
 
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/szyellow/crypto-trading-bot?style=social)](https://github.com/szyellow/crypto-trading-bot/stargazers)
+一个基于 OKX 交易所 API 的智能加密货币交易机器人，采用多 Agent 架构，整合多种交易策略和情绪分析。
 
-> 一个基于 OKX 交易所的 AI 驱动加密货币自动交易系统，采用趋势追踪策略，支持智能止损、动态止盈和金字塔建仓。
+## 🏗️ 多 Agent 架构
 
-**⚠️ 风险提示：加密货币交易具有高风险，本项目仅供学习和研究使用，不构成投资建议。使用本软件进行交易可能导致资金损失，请谨慎评估风险。**
-
-## ✨ 核心特性
-
-- 🤖 **AI 智能决策** - 基于多维度技术指标的趋势评分系统
-- 📊 **动态止盈止损** - 根据趋势强度自动调整止盈止损线
-- 🏗️ **金字塔建仓** - 智能补仓策略，降低持仓成本
-- 📈 **趋势追踪** - 实时分析市场趋势，捕捉交易机会
-- 🛡️ **风险控制** - 黑名单机制、持仓限制、冷却期管理
-- 💰 **资金管理** - 智能仓位分配，保护本金安全
-
-## 🚀 快速开始
-
-### 环境要求
-
-- Node.js >= 18.0.0
-- OKX 交易所账户
-- API Key 权限：读取账户、现货交易
-
-### 安装
-
-```bash
-# 克隆项目
-git clone https://github.com/szyellow/crypto-trading-bot.git
-cd crypto-trading-bot/okx_data
-
-# 安装依赖
-npm install
-
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，填入你的 OKX API 密钥
-```
-
-### 配置
-
-在项目根目录创建 `.env` 文件：
-
-```env
-OKX_API_KEY=your_api_key_here
-OKX_API_SECRET=your_api_secret_here
-OKX_PASSPHRASE=your_passphrase_here
-```
-
-### 运行
-
-```bash
-# 启动交易机器人
-node ai_trading_bot.js
-
-# 或者使用监控面板
-./start_dashboard.sh
-```
-
-## 📋 交易策略
-
-### 买入条件
-
-1. ✅ 不在黑名单
-2. ✅ 趋势评分 ≥ 7分（技术面 + CoinGecko + RSS新闻融合）
-3. ✅ 非横盘状态
-4. ✅ 持仓占比 < 阈值
-5. ✅ 冷却期已结束
-6. ✅ 波动率 ≥ 0.5%
-7. ✅ 24h涨跌在合理范围
-8. ✅ 价格 > $0.1
-9. ✅ 成交量 ≥ 500万USDT
-10. ✅ 近期未买入
-
-### 情绪分析融合（v2.3 新增）
-
-系统通过多维度情绪分析计算综合趋势评分：
+本系统采用模块化多 Agent 设计，各组件职责明确，协同工作：
 
 ```
-综合评分 = 技术面 × 50% + CoinGecko × 30% + RSS新闻 × 20%
+┌─────────────────────────────────────────────────────────────┐
+│                    主交易程序 (ai_trading_bot.js)              │
+│                      - 核心决策引擎                           │
+│                      - 策略执行与协调                         │
+└──────────────┬──────────────────────────────────────────────┘
+               │
+    ┌──────────┼──────────┬──────────┬──────────┐
+    │          │          │          │          │
+    ▼          ▼          ▼          ▼          ▼
+┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│情绪数据 │ │数据提醒│ │交易统计│ │策略进化│ │通知代理│
+│客户端  │ │Sub-Agent│ │模块   │ │模块   │ │       │
+│       │ │       │ │       │ │       │ │       │
+│sentiment│ │data-  │ │trade- │ │strategy│ │notifi-│
+│-client │ │reminder│ │stats │ │-evolution│ │cation │
+│       │ │-agent  │ │       │ │       │ │-agent │
+└────────┘ └────────┘ └────────┘ └────────┘ └────────┘
 ```
 
-**技术面指标：**
-- 价格趋势（MA5、MA10、MA20）
-- 波动率分析
-- 成交量变化
-- K线形态识别
+### Agent 职责说明
 
-**CoinGecko市场情绪：**
-- 24小时涨跌幅
-- 7天趋势
-- 市值和交易量
-- 更新频率：10分钟缓存
+| Agent | 文件 | 职责 |
+|-------|------|------|
+| **主交易程序** | `ai_trading_bot.js` | 核心决策引擎，执行买卖逻辑，协调各 Sub-agent |
+| **情绪数据客户端** | `sentiment-client.js` | 独立服务，获取 CoinGecko 和新闻情绪数据 |
+| **数据提醒 Agent** | `data-reminder-agent.js` | 监控数据新鲜度，防止重复显示旧数据 |
+| **交易统计模块** | `trade-stats.js` | 记录和分析交易数据，生成统计报告 |
+| **策略进化模块** | `strategy-evolution.js` | 根据交易结果自动优化策略参数 |
+| **通知代理** | `notification-agent.js` | 处理各类通知和报警 |
+| **交易代理** | `trading-agent.js` | 封装交易执行逻辑 |
+| **协调器** | `coordinator.js` | 协调多个 Agent 之间的工作流 |
 
-**RSS新闻情绪：**
-- 监控源：CoinDesk、Cointelegraph、Decrypt
-- 关键词情绪分析（看涨/看跌）
-- 24小时新闻窗口
-- 更新频率：15分钟缓存
+## 🚀 主要特性
 
-### 卖出条件
+### 核心功能
+- **智能趋势分析**: 基于多维度技术指标（MA、MACD、RSI、成交量）的趋势评分系统
+- **动态止盈止损**: 根据趋势评分自动调整止盈止损比例
+- **金字塔建仓**: 分层买入策略，首仓$25→跌10%补仓$15→再跌10%补仓$10
+- **阴线买入**: 连续2根阴线+趋势≥6分+价格<MA5时触发买入
+- **横盘暂停**: 趋势3-5分且波动率<0.5%时暂停买入
+- **暴跌反弹**: 24h跌幅>10%且趋势回升至≥6分时抄底
 
-**止盈策略：**
-- 趋势8-10分：止盈 10-15%
-- 趋势6-7分：止盈 6-10%
-- 趋势≤5分：止盈 5-6%
+### 情绪分析 (v2.3+)
+- **CoinGecko 集成**: 实时获取市场情绪数据
+- **新闻情绪分析**: 通过新闻 API 分析币种相关新闻的看涨/看跌情绪
+- **Sub-agent 模式**: 独立服务处理情绪数据，避免主程序阻塞
 
-**止损策略：**
-- 趋势10分：止损 -3%
-- 趋势8-9分：止损 -2%
-- 趋势6-7分：止损 -1.5%
-- 趋势≤5分：止损 -1%
+### 数据提醒系统 (v2.4+)
+- **自动数据检查**: 确保每次报告都基于最新数据
+- **报告时间戳追踪**: 防止重复显示旧数据
+- **数据获取清单**: 自动检查所有 API 数据是否已更新
 
-### 额外策略
-
-- **阴线买入** - 连续2根阴线 + 趋势≥6分 + 价格<MA5
-- **暴跌反弹** - 24h跌幅>10% + 趋势回升至≥6分
-- **金字塔建仓** - 首仓$25 → 跌10%补仓$15 → 再跌10%补仓$10
+### 风险控制
+- **智能止损**: 趋势≤5分→-1%, 6-7分→-1.5%, ≥8分→-2%
+- **黑名单管理**: 自动将止损币种加入黑名单，趋势回升后自动解除
+- **稳定币过滤**: 自动跳过 USDC、USDT 等稳定币
+- **紧急停止**: 支持 EMERGENCY_STOP.flag 文件紧急停止系统
 
 ## 📁 项目结构
 
 ```
 okx_data/
-├── ai_trading_bot.js          # 主交易机器人
-├── okx-api.js                 # OKX API 封装
-├── trade-stats.js             # 交易统计模块
-├── strategy-evolution.js      # 策略进化模块
-├── dashboard.html             # 监控面板
-├── ai_blacklist.json          # 黑名单配置
-├── ai_trade_log.json          # 交易日志
-├── trade_stats.json           # 交易统计
-└── ...
+├── Core Agents:
+├── ai_trading_bot.js           # 主交易程序 (核心决策引擎)
+├── sentiment-client.js         # 情绪数据客户端 (Sub-agent)
+├── data-reminder-agent.js      # 数据提醒 Sub-agent
+├── trading-agent.js            # 交易代理
+├── notification-agent.js       # 通知代理
+├── coordinator.js              # 协调器
+│
+├── Strategy Modules:
+├── strategy-enhanced.js        # 增强策略模块
+├── strategy-evolution.js       # 策略自迭代模块
+├── trade-stats.js              # 交易统计模块
+│
+├── API & Config:
+├── okx-api.js                  # OKX API 封装
+├── config.js                   # 配置文件
+├── package.json                # 项目依赖
+│
+├── Data Files:
+├── ai_blacklist.json           # 黑名单数据
+├── ai_reduce_position_prices.json  # 减仓价格记录
+├── ai_sideways_status.json     # 横盘状态记录
+├── ai_trend_history.json       # 趋势历史记录
+├── strategy_evolution.json     # 策略进化记录
+├── trade_stats.json            # 交易统计数据
+├── last-report-timestamp.json  # 上次报告时间戳
+├── data-reminder-config.json   # 数据提醒配置
+├── notification-agent-config.json  # 通知代理配置
+│
+└── Documentation:
+    ├── README.md               # 本文件
+    ├── AGENT_ARCHITECTURE.md   # 代理架构详细文档
+    ├── DATA_REMINDER_README.md # 数据提醒系统文档
+    ├── BUGFIX_REPORT.md        # Bug 修复报告
+    ├── COMPLETE_FIX.md         # 完整修复文档
+    └── UPDATE_LOG.md           # 更新日志
 ```
 
-## 🔧 配置文件
+## 🛠️ 安装与配置
 
-### 主要配置项 (ai_trading_bot.js)
+### 1. 安装依赖
+```bash
+cd okx_data
+npm install
+```
 
+### 2. 配置 OKX API
+在 `okx-api.js` 中配置你的 API 密钥：
 ```javascript
-const AI_CONFIG = {
-  // 交易限制
-  maxDailyTrades: 9999,        // 每日最大交易次数
-  maxDailyVolume: 1000,        // 每日最大交易量 (USDT)
-  tradeSize: 40,               // 单笔交易金额
-  maxPositions: 5,             // 最大持仓数量
-  
-  // 选股门槛
-  sentimentThreshold: 7,       // 趋势评分门槛
-  
-  // 分层冷却期 (分钟)
-  tieredCooldown: {
-    trend10: 15,      // 趋势10分
-    trend8_9: 20,     // 趋势8-9分
-    trend6_7: 30      // 趋势6-7分
-  },
-  
-  // 波动率筛选
-  volatilityFilter: {
-    minVolatility: 0.5,      // 最小波动率
-    preferredVolatility: 1.5 // 优选波动率
-  }
-};
+const API_KEY = 'your_api_key';
+const API_SECRET = 'your_api_secret';
+const PASSPHRASE = 'your_passphrase';
 ```
 
-## 📊 监控面板
-
-启动 Web 监控面板：
-
+### 3. 启动情绪数据服务 (可选但推荐)
 ```bash
-./start_dashboard.sh
+node sentiment-client.js
 ```
 
-访问 http://localhost:8080 查看：
-- 实时账户资产
-- 持仓详情
-- 交易历史
-- 策略表现
+## 🚀 运行方式
 
-## 🛡️ 风险管理
-
-### 黑名单机制
-
-**稳定币 (永久禁止)：**
-- USDC, USDT, USDG, DAI, TUSD, BUSD
-
-**止损币种 (条件释放)：**
-- 触发止损后自动加入
-- 解除条件：1次≥9分 或 2次≥8分 或 3次≥7分
-
-### 仓位管理
-
-| 趋势评分 | 持仓阈值 | 止损线 |
-|---------|---------|--------|
-| 10分    | 20%     | -3%    |
-| 8-9分   | 20%     | -2%    |
-| 6-7分   | 15%     | -1.5%  |
-| ≤5分    | 10%     | -1%    |
-
-## 📝 日志与统计
-
-### 交易日志
-
-所有交易记录保存在 `ai_trade_log.json`：
-
-```json
-{
-  "time": "2026-03-04T08:30:00.000Z",
-  "coin": "BTC",
-  "action": "buy",
-  "price": 65000,
-  "amount": 0.001,
-  "reason": "趋势评分8/10，突破买入"
-}
-```
-
-### 统计报告
-
-生成交易统计报告：
-
+### 手动运行
 ```bash
-node trade-stats.js
+node ai_trading_bot.js
 ```
 
-## 🔍 故障排查
+### 定时运行 (推荐)
+使用 cron 或其他定时任务工具每 5 分钟运行一次：
+```bash
+*/5 * * * * cd /path/to/okx_data && node ai_trading_bot.js >> trading.log 2>&1
+```
 
-### 常见问题
+## 📊 策略配置
 
-**Q: 总资产显示不更新？**
-A: 检查 API 连接，确保网络正常。数据可能有30-60秒延迟。
+### 选股门槛
+- 趋势评分 ≥ 7分 (可配置)
+- 24h 涨跌幅 -5% ~ 15%
+- 成交量 ≥ 500万 USDT
+- 价格 > $0.1
 
-**Q: 交易没有执行？**
-A: 检查：
-1. 是否在黑名单
-2. 是否满足买入条件
-3. 冷却期是否结束
-4. 资金是否充足
+### 止盈策略
+- 盈利 1.5% → 减仓 25%
+- 盈利 3% → 止盈 50%
+- 盈利 5% → 清仓
 
-**Q: 如何停止机器人？**
-A: 按 Ctrl+C 或运行 `./restart_server.sh`
+### 动态止损
+| 趋势评分 | 止损比例 |
+|---------|---------|
+| ≤5分    | -1%     |
+| 6-7分   | -1.5%   |
+| ≥8分    | -2%     |
 
-## 🤝 贡献指南
+## 📈 监控报告
 
-1. Fork 本项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建 Pull Request
+系统每 5 分钟生成一次交易检查报告，包含：
+- 账户总资产和持仓概况
+- 市场扫描结果（通过筛选的币种）
+- AI 交易决策（买入/卖出/HOLD）
+- 趋势分析和情绪数据
+
+## 🔄 策略自迭代
+
+系统自动分析交易数据并优化策略参数：
+- 胜率 < 30% → 收紧止损 20%
+- 盈亏比 < 1 → 降低止盈
+- 持仓时间 > 6小时 → 降低选股门槛
+- 连续3次止损 → 降低单笔金额 20%
+- 现金 < 30% → 增加最大持仓
+
+## 🚨 紧急停止
+
+创建 `EMERGENCY_STOP.flag` 文件可立即停止系统：
+```bash
+touch EMERGENCY_STOP.flag
+```
+
+删除该文件后可重新启动：
+```bash
+rm EMERGENCY_STOP.flag
+```
+
+## 📝 更新日志
+
+### v2.4 (2026-03-09)
+- 新增数据提醒 Sub-agent
+- 优化止盈单管理逻辑
+- 修复多个边界条件 bug
+- 完善多 Agent 架构文档
+
+### v2.3 (2026-03-08)
+- 新增 CoinGecko 情绪数据集成
+- 实现 Sub-agent 模式处理情绪数据
+- 新增新闻情绪分析功能
+
+### v2.2 (2026-02-26)
+- 新增金字塔建仓策略
+- 新增阴线买入策略
+- 新增横盘暂停策略
+- 新增暴跌反弹策略
+- 优化选股门槛至 7分
+
+### v2.1 (2026-02-22)
+- 修复 BARD 持仓识别 bug
+- 修复 positions 未定义错误
+- 新增交易统计功能
+
+## ⚠️ 风险提示
+
+1. **加密货币交易风险极高**，本系统仅供学习和研究使用
+2. 请确保充分了解策略逻辑后再投入真实资金
+3. 建议先在模拟账户中测试
+4. 过往表现不代表未来收益
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+MIT License
 
-## 🙏 致谢
+## 🤝 贡献
 
-- [OKX API](https://www.okx.com/docs-v5/en/) - 交易所 API
-- [Node.js](https://nodejs.org/) - 运行环境
-- 所有贡献者和测试者
+欢迎提交 Issue 和 Pull Request！
 
-## ⚠️ 免责声明
+## 📞 联系方式
 
-**加密货币交易存在高风险，可能导致本金损失。本机器人仅供学习和研究使用，不构成投资建议。请根据自身风险承受能力谨慎使用。**
-
----
-
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/szyellow">szyellow</a>
-</p>
+如有问题或建议，请通过 GitHub Issues 联系。
