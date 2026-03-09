@@ -4,15 +4,15 @@
       4,
       6,
       6,
+      6,
+      4,
+      4,
       7,
       6,
-      5,
-      5,
       7,
-      5,
-      4
+      7
     ],
-    "highTrendCount": 216
+    "highTrendCount": 278
   },
   "XAUT": {
     "scores": [
@@ -93,16 +93,16 @@
     "scores": [
       7,
       7,
-      4,
-      3,
-      7,
-      3,
-      5,
+      8,
+      8,
+      8,
+      8,
+      8,
       6,
-      7,
-      6
+      6,
+      4
     ],
-    "highTrendCount": 18
+    "highTrendCount": 23
   },
   "ADA": {
     "scores": [
@@ -196,17 +196,17 @@
   },
   "CC": {
     "scores": [
-      4,
-      4,
+      9,
+      9,
       7,
       7,
       7,
       7,
-      4,
+      7,
       6,
-      4,
-      5
+      6,
+      4
     ],
-    "highTrendCount": 56
+    "highTrendCount": 196
   }
 }

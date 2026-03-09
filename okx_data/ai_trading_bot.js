@@ -29,8 +29,17 @@ const {
     getCoinNewsSentiment,
     printCoinGeckoReport,
     printNewsReport,
-    resetRestartFlag
+    resetRestartFlag,
+    initSubAgentService
 } = require('./sentiment-client.js');
+
+// ============================================
+// 导入数据提醒 Sub-Agent - v2.4 新增
+// ============================================
+const {
+    runReminder,
+    recordReportTimestamp
+} = require('./data-reminder-agent.js');
 
 // ============================================
 // 紧急停止检查 - 新增
@@ -1537,6 +1546,9 @@ async function aiTrading() {
     console.log(`今日交易: ${tradeLog.dailyTradeCount}/${AI_CONFIG.maxDailyTrades} 笔`);
     console.log(`今日买入: ${tradeLog.dailyVolume}/${AI_CONFIG.maxDailyVolume} USDT (卖出不计入)`);
     
+    // v2.3 新增：初始化Sub-agent服务
+    await initSubAgentService();
+    
     // v2.3 新增：重置Sub-agent重启标志
     resetRestartFlag();
     
@@ -2064,6 +2076,32 @@ async function aiTrading() {
     
     // 自动复盘并迭代 - 增强版
     await autoReviewAndEvolve(tradeLog, account.positions, account.totalEquity);
+    
+    // ============================================
+    // 数据提醒 Sub-Agent - v2.4 新增
+    // ============================================
+    console.log('\n=== 数据提醒 Sub-Agent ===');
+    
+    // 运行数据提醒
+    const reminderResult = runReminder();
+    if (reminderResult && reminderResult.reminded) {
+        console.log('✅ 已显示数据获取提醒');
+        
+        // 检查是否需要强制检查
+        if (reminderResult.needsForceCheck) {
+            console.log('\n🚨🚨🚨 警告：距离上次报告已超过10分钟！');
+            console.log('🚨 请确保下次提醒时执行新的交易检查！');
+            console.log('🚨 不要重复显示旧数据！\n');
+        }
+    }
+    
+    // 记录本次报告时间戳
+    const timestampResult = recordReportTimestamp();
+    if (timestampResult) {
+        console.log(`✅ 已记录报告时间戳: ${timestampResult.localTime}`);
+    }
+    
+    console.log('=== 数据提醒完成 ===\n');
 }
 
 // 自动复盘并迭代策略

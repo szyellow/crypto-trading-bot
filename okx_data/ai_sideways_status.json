@@ -6,25 +6,5 @@
   "XPL": {
     "periods": 1,
     "startTime": 1772629065899
-  },
-  "ADA": {
-    "periods": 1,
-    "startTime": 1772725486217
-  },
-  "XRP": {
-    "periods": 1,
-    "startTime": 1772800858210
-  },
-  "TRX": {
-    "periods": 6,
-    "startTime": 1772811911131
-  },
-  "BNB": {
-    "periods": 1,
-    "startTime": 1772812573504
-  },
-  "CC": {
-    "periods": 2,
-    "startTime": 1772813133254
   }
 }
