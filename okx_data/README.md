@@ -28,19 +28,132 @@
 - **稳定币过滤**: 自动跳过 USDC、USDT 等稳定币
 - **紧急停止**: 支持 EMERGENCY_STOP.flag 文件紧急停止系统
 
+## 🏗️ 多 Agent 架构
+
+本系统采用多 Agent 协作架构，各 Agent 职责明确，通过模块化设计实现高效协作：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    AI Trading System                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐                │
+│  │  Main Trading   │    │   Coordinator   │                │
+│  │     Agent       │◄──►│     Agent       │                │
+│  │ (ai_trading_bot)│    │ (coordinator.js)│                │
+│  └────────┬────────┘    └─────────────────┘                │
+│           │                                                 │
+│           ▼                                                 │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Sub-Agent Services                      │   │
+│  ├─────────────────┬─────────────────┬─────────────────┤   │
+│  │  Sentiment      │  Data Reminder  │  Notification   │   │
+│  │    Client       │     Agent       │     Agent       │   │
+│  │(sentiment-     │(data-reminder-  │(notification-   │   │
+│  │  client.js)     │   agent.js)     │   agent.js)     │   │
+│  └─────────────────┴─────────────────┴─────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Strategy Modules                        │   │
+│  ├─────────────────┬─────────────────┬─────────────────┤   │
+│  │   Enhanced      │   Evolution     │     Stats       │   │
+│  │   Strategy      │   Strategy      │   (trade-stats) │   │
+│  │(strategy-      │(strategy-      │                 │   │
+│  │ enhanced.js)    │ evolution.js)   │                 │   │
+│  └─────────────────┴─────────────────┴─────────────────┘   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Agent 职责说明
+
+#### 1. 主交易 Agent (`ai_trading_bot.js`)
+- **职责**: 核心交易逻辑执行
+- **功能**:
+  - 市场扫描和趋势分析
+  - 买入/卖出决策执行
+  - 止盈止损订单管理
+  - 持仓监控和调整
+- **触发**: 每 5 分钟运行一次
+
+#### 2. 情绪数据 Client (`sentiment-client.js`)
+- **职责**: 市场情绪数据获取和处理
+- **功能**:
+  - CoinGecko API 数据获取
+  - 新闻情绪分析
+  - 情绪数据缓存和分发
+  - 独立服务避免主程序阻塞
+- **模式**: Sub-agent 独立进程
+
+#### 3. 数据提醒 Agent (`data-reminder-agent.js`)
+- **职责**: 确保数据新鲜度
+- **功能**:
+  - 报告时间戳追踪
+  - 数据获取清单检查
+  - 防止重复显示旧数据
+  - 提醒主程序获取最新数据
+- **触发**: 每次主程序运行时检查
+
+#### 4. 协调器 Agent (`coordinator.js`)
+- **职责**: 多 Agent 协调和任务分发
+- **功能**:
+  - 任务调度
+  - Agent 状态监控
+  - 错误处理和恢复
+
+#### 5. 交易 Agent (`trading-agent.js`)
+- **职责**: 具体交易操作执行
+- **功能**:
+  - 订单创建和管理
+  - 仓位计算
+  - 风险控制执行
+
+#### 6. 通知 Agent (`notification-agent.js`)
+- **职责**: 消息通知管理
+- **功能**:
+  - 交易报告生成
+  - 飞书/其他渠道通知
+  - 告警消息发送
+
+### 数据流
+
+```
+1. 主交易 Agent 启动
+   │
+   ▼
+2. 调用情绪数据 Client 获取市场情绪
+   │
+   ▼
+3. 调用数据提醒 Agent 检查数据新鲜度
+   │
+   ▼
+4. 执行交易策略分析
+   │
+   ▼
+5. 调用交易 Agent 执行买卖操作
+   │
+   ▼
+6. 调用通知 Agent 发送报告
+```
+
 ## 📁 项目结构
 
 ```
 okx_data/
-├── ai_trading_bot.js           # 主交易程序
+├── Core Agents:
+├── ai_trading_bot.js           # 主交易程序 (核心 Agent)
 ├── sentiment-client.js         # 情绪数据客户端 (Sub-agent)
 ├── data-reminder-agent.js      # 数据提醒 Sub-agent
-├── strategy-enhanced.js        # 增强策略模块
-├── strategy-evolution.js       # 策略自迭代模块
-├── trade-stats.js              # 交易统计模块
 ├── coordinator.js              # 协调器模块
 ├── trading-agent.js            # 交易代理模块
 ├── notification-agent.js       # 通知代理模块
+│
+├── Strategy Modules:
+├── strategy-enhanced.js        # 增强策略模块
+├── strategy-evolution.js       # 策略自迭代模块
+├── trade-stats.js              # 交易统计模块
+│
+├── API & Config:
 ├── okx-api.js                  # OKX API 封装
 ├── config.js                   # 配置文件
 ├── package.json                # 项目依赖
