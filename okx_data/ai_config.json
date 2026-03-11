@@ -1,0 +1,27 @@
+{
+  "strategyMode": {
+    "strategyVersion": "3.0-short-term",
+    "strategyName": "短线高胜率模式",
+    "minTrendScore": 8,
+    "maxTrendScore": 10,
+    "rsiMin": 40,
+    "rsiMax": 60,
+    "minVolumeRatio": 1,
+    "max24hChange": 5,
+    "min24hChange": -2,
+    "minMarketTrend": 6,
+    "positionSize": 40,
+    "maxPositions": 3,
+    "maxPositionPercent": 15,
+    "stopLoss": -1,
+    "takeProfit1": 2,
+    "takeProfit2": 5,
+    "timeStop": 24,
+    "minTradeInterval": 4,
+    "maxDailyTrades": 3,
+    "minVolatility": 0.5,
+    "maxVolatility": 3,
+    "enabled": true,
+    "startTime": "2026-03-09T09:49:28.219Z"
+  }
+}
