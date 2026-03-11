@@ -1,12 +1,24 @@
 // ============================================
-// AI自主交易系统 v2.3 - 增强版
-// 整合《短线六大必杀法》+ CoinGecko情绪监控
+// AI自主交易系统 v3.0 - 短线高胜率模式
+// 借鉴 @puff_2002 (千金一刻) 的交易理念
+// 核心：高胜率 + 严格止损 + 快速进出
 // ============================================
 
 const fs = require('fs');
 const { request } = require('./okx-api.js');
 const { evolveStrategy } = require('./strategy-evolution.js');
 const TradeStats = require('./trade-stats.js');
+
+// ============================================
+// 导入短线高胜率策略 v3.0 - 新增
+// ============================================
+const {
+    SHORT_TERM_CONFIG,
+    checkShortTermBuyCondition,
+    checkShortTermExit,
+    getTodayTradeCount,
+    recordTrade
+} = require('./strategy-short-term.js');
 
 // ============================================
 // 导入增强策略模块 - v2.2 新增
@@ -34,8 +46,15 @@ const {
 } = require('./sentiment-client.js');
 
 // ============================================
-// 导入数据提醒 Sub-Agent - v2.4 新增
+// 导入多维度共振策略模块 - v3.1 新增
 // ============================================
+const {
+    checkMarketEnvironment,
+    checkCapitalFlow,
+    validateTechnicalIndicators,
+    calculateResonanceScore,
+    calculatePositionSize
+} = require('./strategy-resonance.js');
 const {
     runReminder,
     recordReportTimestamp
@@ -145,8 +164,8 @@ const AI_CONFIG = {
     maxPositionPerCoin: 35,      // 单币种最大仓位35%（降低集中度）
     maxDailyTrades: 9999,        // 每日最大交易次数（已取消限制，满足条件即可交易）
     maxDailyVolume: 1000,        // 每日最大交易量$1000（追加投资后提升）
-    stopLossPercent: -2.4,       // 止损线-2.4%（收紧止损，保护本金）
-    takeProfitPercent: 5,        // 止盈线+5%（降低目标，更容易达到）
+    stopLossPercent: -1.0,       // v3.0: 短线策略止损-1%（更严格）
+    takeProfitPercent: 5,        // 止盈线+5%（短线策略第二止盈位）
     // 波段操作配置 - 新增
     bandTrade: {
         enabled: true,           // 启用波段操作
@@ -875,16 +894,27 @@ function calculateBollinger(prices, period = 20) {
     };
 }
 
-// 计算波动率
+// 计算波动率 - 使用价格区间波动幅度（更直观）
 function calculateVolatility(prices) {
     if (prices.length < 2) return 0;
+    
+    // 方法1：计算收益率标准差（原有方法）
     const changes = [];
     for (let i = 1; i < prices.length; i++) {
         changes.push((prices[i] - prices[i - 1]) / prices[i - 1]);
     }
     const mean = changes.reduce((a, b) => a + b, 0) / changes.length;
     const variance = changes.reduce((sum, c) => sum + Math.pow(c - mean, 2), 0) / changes.length;
-    return Math.sqrt(variance) * 100;
+    const stdVolatility = Math.sqrt(variance) * 100;
+    
+    // 方法2：计算价格区间波动幅度（最高价-最低价）/ 平均价
+    const maxPrice = Math.max(...prices);
+    const minPrice = Math.min(...prices);
+    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+    const rangeVolatility = ((maxPrice - minPrice) / avgPrice) * 100;
+    
+    // 返回两种方法的平均值（更全面的波动率指标）
+    return (stdVolatility + rangeVolatility) / 2;
 }
 
 // 获取账户数据
@@ -1281,71 +1311,90 @@ async function makeDecision(coin, position, currentPrice, sentiment, account) {
         console.log(`  ⚠️ 趋势评分已调整至${sentiment.score}/10`);
     }
     
-    // 3. 增强买入逻辑 - v2.2 整合新策略
+    // 3. 多维度共振买入逻辑 - v3.1 重构
+    // 替代原有的单一舆情驱动，采用四维共振策略
     
-    // 检查阴线买入信号 - v2.2 新增（技巧3：阴线买阳线卖）
-    const bearishCheck = await checkConsecutiveBearishCandles(`${coin}-USDT`, currentPrice);
-    if (bearishCheck.isBearish && sentiment.score >= 6) {
-        console.log(`  📉 阴线买入信号触发：连续阴线后反弹，趋势${sentiment.score}/10`);
-        const pyramidAmount = calculatePyramidBuyAmount(coin, currentPrice, 0);
-        if (pyramidAmount > 0) {
-            decision = { 
-                action: 'buy', 
-                reason: `阴线买入！连续阴线跌幅${bearishCheck.dropPercent.toFixed(2)}%，趋势${sentiment.score}/10，金字塔首仓$${pyramidAmount}`,
-                amount: pyramidAmount / currentPrice,
-                usdtAmount: pyramidAmount
-            };
-            return decision;
-        }
-    }
-    
-    // 检查暴跌反弹 - v2.2 新增（技巧4：暴跌有机会）
-    const crashCheck = await checkCrashRebound(`${coin}-USDT`, sentiment.change24h || 0, sentiment.score);
-    if (crashCheck.isRebound) {
-        console.log(`  💥 暴跌反弹信号触发：24h跌幅${(crashCheck.dropPercent*100).toFixed(2)}%，趋势回升至${crashCheck.trendScore}分`);
-        const pyramidAmount = calculatePyramidBuyAmount(coin, currentPrice, 0);
-        if (pyramidAmount > 0) {
-            decision = { 
-                action: 'buy', 
-                reason: `暴跌反弹！24h跌幅${(crashCheck.dropPercent*100).toFixed(2)}%后趋势回升至${crashCheck.trendScore}分，金字塔首仓$${pyramidAmount}`,
-                amount: pyramidAmount / currentPrice,
-                usdtAmount: pyramidAmount
-            };
-            return decision;
-        }
-    }
-    
-    // 舆情驱动买入（原有逻辑，修改为金字塔建仓）
+    // 首先检查是否满足基本的舆情门槛
     if (sentiment.score >= AI_CONFIG.sentimentThreshold) {
-        // 波动率筛选 - 新增
-        if (AI_CONFIG.volatilityFilter && AI_CONFIG.volatilityFilter.enabled) {
-            const volatility = sentiment.volatility || 0;
-            const minVol = AI_CONFIG.volatilityFilter.minVolatility;
-            const preferredVol = AI_CONFIG.volatilityFilter.preferredVolatility;
+        console.log(`\n🎯 ${coin} 舆情达标(${sentiment.score}分)，启动多维度共振分析...`);
+        
+        // 执行多维度共振分析
+        const resonance = await calculateResonanceScore(coin, sentiment, currentPrice);
+        
+        // 根据共振分数决策
+        if (resonance.canBuy) {
+            // 计算动态仓位
+            const position = calculatePositionSize(resonance.totalScore, AI_CONFIG.tradeSize);
             
-            if (volatility < minVol) {
-                console.log(`  ⚠️ 波动率筛选：${volatility.toFixed(2)}% < ${minVol}%（最小要求），跳过买入`);
-                decision = { action: 'hold', reason: `波动率过低(${volatility.toFixed(2)}%)，跳过买入` };
+            if (position.size > 0) {
+                console.log(`  ✅ 共振通过！${position.reason}`);
+                
+                // 检查波动率
+                if (AI_CONFIG.volatilityFilter?.enabled) {
+                    const volatility = sentiment.volatility || 0;
+                    if (volatility < AI_CONFIG.volatilityFilter.minVolatility) {
+                        console.log(`  ⚠️ 波动率过低(${volatility.toFixed(2)}%)，降低仓位50%`);
+                        position.size = Math.max(15, position.size * 0.5);
+                    }
+                }
+                
+                decision = {
+                    action: 'buy',
+                    reason: `多维度共振(${resonance.totalScore}/10): ${resonance.reason}，${position.reason}`,
+                    amount: position.size / currentPrice,
+                    usdtAmount: position.size,
+                    resonanceScore: resonance.totalScore
+                };
+                return decision;
+            } else {
+                console.log(`  ❌ 共振分数(${resonance.totalScore})不足以建仓`);
+                decision = { 
+                    action: 'hold', 
+                    reason: `共振分数(${resonance.totalScore})不足，需≥7分才建仓` 
+                };
                 return decision;
             }
-            
-            if (volatility >= preferredVol) {
-                console.log(`  ✅ 波动率优选：${volatility.toFixed(2)}% >= ${preferredVol}%，优先买入`);
-            } else {
-                console.log(`  ⚠️ 波动率一般：${volatility.toFixed(2)}%，在${minVol}%-${preferredVol}%范围内`);
+        } else {
+            console.log(`  ❌ 共振未通过: ${resonance.reason}`);
+            decision = { 
+                action: 'hold', 
+                reason: `多维度共振未通过: ${resonance.reason}` 
+            };
+            return decision;
+        }
+    } else {
+        // 舆情不达标，检查特殊买入信号（阴线买入、暴跌反弹）
+        
+        // 检查阴线买入信号 - v2.2 保留
+        const bearishCheck = await checkConsecutiveBearishCandles(`${coin}-USDT`, currentPrice);
+        if (bearishCheck.isBearish && sentiment.score >= 6) {
+            console.log(`  📉 阴线买入信号触发：连续阴线后反弹，趋势${sentiment.score}/10`);
+            const pyramidAmount = calculatePyramidBuyAmount(coin, currentPrice, 0);
+            if (pyramidAmount > 0) {
+                decision = { 
+                    action: 'buy', 
+                    reason: `阴线买入！连续阴线跌幅${bearishCheck.dropPercent.toFixed(2)}%，趋势${sentiment.score}/10，金字塔首仓$${pyramidAmount}`,
+                    amount: pyramidAmount / currentPrice,
+                    usdtAmount: pyramidAmount
+                };
+                return decision;
             }
         }
         
-        // 使用金字塔建仓计算买入金额 - v2.2 修改
-        const pyramidAmount = calculatePyramidBuyAmount(coin, currentPrice, 0);
-        if (pyramidAmount > 0) {
-            decision = { 
-                action: 'buy', 
-                reason: `舆情利好(${sentiment.score}分)，金字塔建仓$${pyramidAmount}`,
-                amount: pyramidAmount / currentPrice,
-                usdtAmount: pyramidAmount
-            };
-            return decision;
+        // 检查暴跌反弹 - v2.2 保留
+        const crashCheck = await checkCrashRebound(`${coin}-USDT`, sentiment.change24h || 0, sentiment.score);
+        if (crashCheck.isRebound) {
+            console.log(`  💥 暴跌反弹信号触发：24h跌幅${(crashCheck.dropPercent*100).toFixed(2)}%，趋势回升至${crashCheck.trendScore}分`);
+            const pyramidAmount = calculatePyramidBuyAmount(coin, currentPrice, 0);
+            if (pyramidAmount > 0) {
+                decision = { 
+                    action: 'buy', 
+                    reason: `暴跌反弹！24h跌幅${(crashCheck.dropPercent*100).toFixed(2)}%后趋势回升至${crashCheck.trendScore}分，金字塔首仓$${pyramidAmount}`,
+                    amount: pyramidAmount / currentPrice,
+                    usdtAmount: pyramidAmount
+                };
+                return decision;
+            }
         }
     }
     
@@ -1798,7 +1847,9 @@ async function aiTrading() {
         const sentiment = {
             score: trend.score,
             trend: trend.trend,
-            factors: [`技术趋势: ${trendText}`, `24h涨跌: ${trend.recentChange?.toFixed(2)}%`]
+            volatility: trend.volatility,  // 添加波动率字段
+            recentChange: trend.recentChange,  // 添加近期变化
+            factors: [`技术趋势: ${trendText}`, `24h涨跌: ${trend.recentChange?.toFixed(2)}%`, `波动率: ${trend.volatility?.toFixed(2)}%`]
         };
         
         const decision = await makeDecision(
@@ -1840,12 +1891,69 @@ async function aiTrading() {
             maxPositionPercentByTrend = 20; // 一般趋势，允许20%
         }
         
+// ============================================
+// v3.0 短线高胜率策略 - 买入条件（替代原抄底逻辑）
+// ============================================
+
+// 短线策略配置
+const SHORT_TERM_CONFIG = {
+    MIN_TREND_SCORE: 8,        // 趋势评分 >= 8分
+    MAX_TREND_SCORE: 10,       // 趋势评分 <= 10分
+    RSI_MIN: 40,               // RSI >= 40
+    RSI_MAX: 60,               // RSI <= 60
+    MIN_VOLUME_RATIO: 0.3,     // 成交量 >= 0.3x (币市横盘期正常水平)
+    MAX_24H_CHANGE: 5,         // 24h涨跌幅 <= +5%
+    MIN_24H_CHANGE: -2,        // 24h涨跌幅 >= -2%
+    POSITION_SIZE: 40,         // 单笔金额 $40
+    MAX_POSITIONS: 3,          // 最大持仓3个
+    STOP_LOSS: -1.0,           // 止损 -1%
+    TAKE_PROFIT_1: 2.0,        // 止盈1 +2%（减仓50%）
+    TAKE_PROFIT_2: 5.0,        // 止盈2 +5%（清仓）
+    TIME_STOP: 24              // 时间止损 24小时
+};
+
+// v3.0 短线策略买入检查
+async function checkShortTermBuy(coin, account) {
+    const checks = {
+        trend: coin.potential >= SHORT_TERM_CONFIG.MIN_TREND_SCORE && 
+               coin.potential <= SHORT_TERM_CONFIG.MAX_TREND_SCORE,
+        rsi: false,
+        volume: coin.volumeRatio >= SHORT_TERM_CONFIG.MIN_VOLUME_RATIO,
+        priceChange: false
+    };
+    
+    // 获取RSI
+    const rsi = await getCoinRSI(coin.symbol);
+    checks.rsi = rsi >= SHORT_TERM_CONFIG.RSI_MIN && rsi <= SHORT_TERM_CONFIG.RSI_MAX;
+    
+    // 获取24h涨跌
+    const change24h = coin.recentChange || 0;
+    checks.priceChange = change24h >= SHORT_TERM_CONFIG.MIN_24H_CHANGE && 
+                         change24h <= SHORT_TERM_CONFIG.MAX_24H_CHANGE;
+    
+    const allPassed = checks.trend && checks.rsi && checks.volume && checks.priceChange;
+    
+    return {
+        canBuy: allPassed,
+        checks: checks,
+        rsi: rsi,
+        change24h: change24h,
+        reason: allPassed ? 
+            `短线策略：趋势${coin.potential}分，RSI${rsi.toFixed(1)}，成交量${coin.volumeRatio?.toFixed(2)}x，24h${change24h.toFixed(2)}%` :
+            `趋势${checks.trend?'✓':'✗'} RSI${checks.rsi?'✓':'✗'}(${rsi?.toFixed(1)}) 成交量${checks.volume?'✓':'✗'} 涨跌${checks.priceChange?'✓':'✗'}`
+    };
+}
+
         // v2.4 优化：严格抄底条件，保护本金
-        const dipBuyConfig = AI_CONFIG.dipBuy;
-        let canBuyDip = false;
-        let dipBuyReason = '';
+        // v3.0 修改：使用短线高胜率策略替代原抄底逻辑
+        const shortTermCheck = await checkShortTermBuy(coin, account);
+        let canBuyDip = shortTermCheck.canBuy;
+        let dipBuyReason = shortTermCheck.reason;
         
-        if (dipBuyConfig.enabled) {
+        // 保留原逻辑作为fallback（如果短线策略不通过）
+        if (!canBuyDip) {
+            const dipBuyConfig = AI_CONFIG.dipBuy;
+            
             // 1. 趋势评分验证（≥8分）
             const trendOk = coin.potential >= dipBuyConfig.minTrendScore;
             
@@ -1884,24 +1992,30 @@ async function aiTrading() {
                 if (!priceOk) reasons.push(`价格位置不对`);
                 console.log(`  ⏭️ 抄底条件不满足: ${reasons.join(', ')}`);
             }
+        } else {
+            console.log(`  ✅ 短线策略条件满足: ${dipBuyReason}`);
         }
         
-        // 严格买入条件：必须满足所有抄底条件
+        // 严格买入条件：必须满足所有条件
+        // v3.0：使用短线策略固定金额 $40
+        const tradeSize = shortTermCheck.canBuy ? SHORT_TERM_CONFIG.POSITION_SIZE : AI_CONFIG.tradeSize;
+        
         if (!isBlacklisted && 
             positionPercent <= maxPositionPercentByTrend &&
             !justBought &&
-            canBuyDip &&  // v2.4：严格抄底条件
+            canBuyDip &&
             cashPercent >= 30 &&
             cooldown.canBuy &&
             tradeLog.dailyTradeCount < AI_CONFIG.maxDailyTrades &&
             tradeLog.dailyVolume < AI_CONFIG.maxDailyVolume &&
-            account.usdtAvailable >= AI_CONFIG.tradeSize) {
+            account.usdtAvailable >= tradeSize) {
             
             console.log(`  💡 发现机会！${dipBuyReason}，现金充足${cashPercent.toFixed(1)}%`);
+            console.log(`  💰 买入金额: $${tradeSize} ${shortTermCheck.canBuy ? '(短线策略)' : '(原策略)'}`);
             decision.action = 'buy';
             decision.reason = dipBuyReason;
-            decision.amount = AI_CONFIG.tradeSize / price;
-            decision.usdtAmount = AI_CONFIG.tradeSize;
+            decision.amount = tradeSize / price;
+            decision.usdtAmount = tradeSize;
         } else {
             if (isBlacklisted) {
                 console.log(`  🚫 ${coin.symbol}在黑名单中，跳过`);
@@ -2324,7 +2438,7 @@ const stats = new TradeStats();
 console.log(stats.generateReport());
 
 // 输出策略优化配置
-console.log('\n🔧 策略优化配置已生效(v2.2):');
+console.log('\n🔧 策略优化配置已生效(v3.0-短线高胜率模式):');
 console.log(`  • 选股门槛: ${AI_CONFIG.sentimentThreshold}分 (从8分降至7分)`);
 console.log(`  • 分层冷却期: 趋势10分→${AI_CONFIG.tieredCooldown?.trend10 || 15}分钟, 8-9分→${AI_CONFIG.tieredCooldown?.trend8_9 || 20}分钟, 6-7分→${AI_CONFIG.tieredCooldown?.trend6_7 || 30}分钟`);
 console.log(`  • 波动率筛选: 最小${AI_CONFIG.volatilityFilter?.minVolatility || 0.5}%, 优选${AI_CONFIG.volatilityFilter?.preferredVolatility || 1.5}%`);
