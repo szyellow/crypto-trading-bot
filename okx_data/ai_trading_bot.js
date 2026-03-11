@@ -159,9 +159,38 @@ const BLACKLIST_HIGH_THRESHOLD = 9; // 高分阈值，单次达到即可解除
 // ============================================
 const STABLECOINS = ['USDC', 'USDT', 'DAI', 'TUSD', 'BUSD', 'USDG'];
 
-// 检查黑名单币种是否应该解除
+// 检查黑名单币种是否应该解除（币市麻雀战法优化）
 function shouldRemoveFromBlacklist(coin, currentTrendScore) {
-    if (!PERSISTENT_BLACKLIST.includes(coin)) return false;
+    // 检查是否在内存黑名单中（包括持久化和临时）
+    const inMemoryBlacklist = AI_CONFIG.blacklistedCoins.includes(coin);
+    const inPersistentBlacklist = PERSISTENT_BLACKLIST.includes(coin);
+    
+    if (!inMemoryBlacklist && !inPersistentBlacklist) return false;
+    
+    // 币市麻雀战法：强势趋势立即解除（>=8分）
+    if (SPARROW_CONFIG.blacklist.strongTrendUnlock && currentTrendScore >= SPARROW_CONFIG.blacklist.strongTrendThreshold) {
+        console.log(`✅ ${coin} 趋势评分${currentTrendScore}≥${SPARROW_CONFIG.blacklist.strongTrendThreshold}（麻雀战法），立即解除黑名单`);
+        
+        // 从内存黑名单移除
+        const memIdx = AI_CONFIG.blacklistedCoins.indexOf(coin);
+        if (memIdx > -1) AI_CONFIG.blacklistedCoins.splice(memIdx, 1);
+        
+        // 从持久化黑名单移除（如果是）
+        if (inPersistentBlacklist) {
+            const perIdx = PERSISTENT_BLACKLIST.indexOf(coin);
+            if (perIdx > -1) {
+                PERSISTENT_BLACKLIST.splice(perIdx, 1);
+                fs.writeFileSync(BLACKLIST_FILE, JSON.stringify(PERSISTENT_BLACKLIST));
+            }
+        }
+        
+        // 清理追踪器
+        delete BLACKLIST_TREND_TRACKER[coin];
+        return true;
+    }
+    
+    // 原有逻辑：持久化黑名单的趋势追踪解除
+    if (!inPersistentBlacklist) return false;
     
     // 初始化趋势追踪
     if (!BLACKLIST_TREND_TRACKER[coin]) {
@@ -191,6 +220,9 @@ function shouldRemoveFromBlacklist(coin, currentTrendScore) {
                 PERSISTENT_BLACKLIST.splice(index, 1);
                 fs.writeFileSync(BLACKLIST_FILE, JSON.stringify(PERSISTENT_BLACKLIST));
             }
+            // 从内存黑名单移除
+            const memIdx = AI_CONFIG.blacklistedCoins.indexOf(coin);
+            if (memIdx > -1) AI_CONFIG.blacklistedCoins.splice(memIdx, 1);
             // 清理追踪器
             delete BLACKLIST_TREND_TRACKER[coin];
             return true;
@@ -202,6 +234,10 @@ function shouldRemoveFromBlacklist(coin, currentTrendScore) {
             tracker.highTrendCount = 0;
         }
     }
+    
+    tracker.lastCheck = Date.now();
+    return false;
+}
     
     tracker.lastCheck = Date.now();
     return false;
@@ -2178,12 +2214,32 @@ async function checkShortTermBuy(coin, account) {
                     }
                 }
                 
-                // 如果标记加入黑名单，则添加
+                // 如果标记加入黑名单，则添加（币市麻雀战法优化）
                 if (decision.addToBlacklist && !AI_CONFIG.blacklistedCoins.includes(coin.symbol)) {
-                    AI_CONFIG.blacklistedCoins.push(coin.symbol);
-                    PERSISTENT_BLACKLIST.push(coin.symbol);
-                    fs.writeFileSync(BLACKLIST_FILE, JSON.stringify(PERSISTENT_BLACKLIST, null, 2));
-                    console.log(`⚠️ ${coin.symbol} 已加入黑名单并持久化，禁止后续买入`);
+                    // 检查是否是手动黑名单或稳定币（这些永久保留）
+                    const isManualBan = decision.reason && decision.reason.includes('手动');
+                    const isStablecoin = SPARROW_CONFIG.blacklist.stablecoins.includes(coin.symbol);
+                    
+                    // 只有手动黑名单和稳定币才永久加入，亏损止损不加入持久化黑名单
+                    if (isManualBan || isStablecoin) {
+                        AI_CONFIG.blacklistedCoins.push(coin.symbol);
+                        PERSISTENT_BLACKLIST.push(coin.symbol);
+                        fs.writeFileSync(BLACKLIST_FILE, JSON.stringify(PERSISTENT_BLACKLIST, null, 2));
+                        console.log(`⚠️ ${coin.symbol} 已加入永久黑名单（${isManualBan ? '手动' : '稳定币'}），禁止后续买入`);
+                    } else {
+                        // 亏损止损：只加入内存黑名单，2小时后自动解除
+                        AI_CONFIG.blacklistedCoins.push(coin.symbol);
+                        console.log(`⚠️ ${coin.symbol} 已加入临时黑名单（亏损止损），2小时后自动解除或趋势>=8分立即解除`);
+                        
+                        // 设置2小时后自动解除
+                        setTimeout(() => {
+                            const idx = AI_CONFIG.blacklistedCoins.indexOf(coin.symbol);
+                            if (idx > -1) {
+                                AI_CONFIG.blacklistedCoins.splice(idx, 1);
+                                console.log(`⏰ ${coin.symbol} 临时黑名单已自动解除（2小时到期）`);
+                            }
+                        }, SPARROW_CONFIG.blacklist.stopLossDuration);
+                    }
                 }
                 
                 fs.writeFileSync('ai_trade_log.json', JSON.stringify(tradeLog, null, 2));
@@ -2495,7 +2551,7 @@ console.log(`  • 日目标: $${SPARROW_CONFIG.dailyTarget} (1%)`);
 console.log(`  • 周目标: $${SPARROW_CONFIG.weeklyTarget} (2.5%)`);
 console.log(`  • 止盈: +${SPARROW_CONFIG.takeProfit.hard * 100}% (麻雀见好就收)`);
 console.log(`  • 止损: -${SPARROW_CONFIG.stopLoss.hard * 100}% (严格止损)`);
-console.log(`  • 单笔仓位: $${SPARROW_CONFIG.position.positionSize.min}-$${SPARROW_CONFIG.position.positionSize.max}`);
+console.log(`  • 单笔仓位: $10-$15 (时区动态调整)`);
 console.log(`  • 持仓时间: 15分钟-2小时`);
 console.log(`  • 选股门槛: 趋势≥${SPARROW_CONFIG.entryThreshold.trendScore}分, 共振≥${SPARROW_CONFIG.entryThreshold.resonanceScore}分`);
 console.log(`  • 时区感知: 6个交易时段动态调整`);

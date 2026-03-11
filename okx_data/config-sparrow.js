@@ -97,5 +97,28 @@ module.exports = {
         technical: 0.30,        // 技术30%
         capitalFlow: 0.25,      // 资金25%
         marketEnv: 0.15         // 大盘15%
+    },
+    
+    // 黑名单配置 (币市麻雀战法优化)
+    blacklist: {
+        // 亏损止损黑名单：2小时（原24小时）
+        // 超短线交易，快速反弹机会多，缩短限制时间
+        stopLossDuration: 2 * 60 * 60 * 1000,  // 2小时
+        
+        // 强势趋势立即解除（>=8分）
+        // 如果趋势大涨，立即解除黑名单限制
+        strongTrendUnlock: true,
+        strongTrendThreshold: 8,  // 趋势>=8分立即解除
+        
+        // 中等趋势缩短限制（6-7分）
+        mediumTrendDuration: 30 * 60 * 1000,  // 30分钟
+        mediumTrendThreshold: 6,  // 趋势6-7分缩短至30分钟
+        
+        // 保留手动黑名单（用户主动禁止）
+        manualBan: true,
+        
+        // 保留稳定币黑名单（避免误买USDC等）
+        stablecoinBan: true,
+        stablecoins: ['USDC', 'USDT', 'USDG', 'USDE', 'DAI', 'TUSD', 'PAXG', 'XAUT']
     }
 };

@@ -1,50 +1,32 @@
 {
   "summary": {
-    "totalTrades": 8,
-    "buyCount": 2,
-    "sellCount": 6,
-    "takeProfitSells": 2,
-    "stopLossSells": 0,
-    "winRate": "33.33",
-    "avgProfit": "2.75",
-    "avgLoss": "0.00",
+    "totalTrades": 1,
+    "buyCount": 0,
+    "sellCount": 1,
+    "takeProfitSells": 0,
+    "stopLossSells": 1,
+    "winRate": "0.00",
+    "avgProfit": "0.00",
+    "avgLoss": "1.50",
     "profitLossRatio": "0.00",
-    "totalProfit": "5.49",
-    "totalLoss": "0.00",
-    "netProfit": "5.49"
+    "totalProfit": "0.00",
+    "totalLoss": "1.50",
+    "netProfit": "-1.50"
   },
   "coinStats": {
-    "OKB": {
+    "IP": {
       "buys": 0,
       "sells": 1,
-      "profit": 1,
-      "loss": 0
-    },
-    "IP": {
-      "buys": 1,
-      "sells": 2,
       "profit": 0,
-      "loss": 0
-    },
-    "ADA": {
-      "buys": 0,
-      "sells": 3,
-      "profit": 1,
-      "loss": 0
-    },
-    "AVAX": {
-      "buys": 1,
-      "sells": 0,
-      "profit": 0,
-      "loss": 0
+      "loss": 1
     }
   },
   "today": {
     "date": "2026-03-11",
-    "trades": 0,
+    "trades": 1,
     "buys": 0,
-    "sells": 0,
+    "sells": 1,
     "volume": "0.00"
   },
-  "lastUpdated": "2026-03-11T03:55:10.170Z"
+  "lastUpdated": "2026-03-11T05:50:40.861Z"
 }
