@@ -49,20 +49,6 @@
 | **短期策略** | `strategy-short-term.js` | 超短线交易策略 |
 | **策略进化** | `strategy-evolution.js` | 根据交易结果自动优化参数 |
 
-### Agent 职责说明
-
-| Agent | 文件 | 职责 |
-|-------|------|------|
-| **主交易程序** | `ai_trading_bot.js` | 核心决策引擎，执行买卖逻辑，协调各 Sub-agent |
-| **情绪数据客户端** | `sentiment-client.js` | 独立服务，获取 CoinGecko 和新闻情绪数据 |
-| **数据提醒 Agent** | `data-reminder-agent.js` | 监控数据新鲜度，防止重复显示旧数据 |
-| **交易统计模块** | `trade-stats.js` | 记录和分析交易数据，生成统计报告 |
-| **策略进化模块** | `strategy-evolution.js` | 根据交易结果自动优化策略参数 |
-| **多维度共振策略** | `strategy-resonance.js` | 四维共振分析（舆情/技术/资金/大盘） |
-| **通知代理** | `notification-agent.js` | 处理各类通知和报警 |
-| **交易代理** | `trading-agent.js` | 封装交易执行逻辑 |
-| **协调器** | `coordinator.js` | 协调多个 Agent 之间的工作流 |
-
 ## 🚀 主要特性
 
 ### 币市麻雀战法 v4.1 (核心策略)
@@ -143,6 +129,7 @@ okx_data/
 ├── API & Config:
 ├── okx-api.js                  # OKX API 封装
 ├── config.js                   # 配置文件
+├── config-sparrow.js           # 币市麻雀战法配置
 ├── package.json                # 项目依赖
 │
 ├── Data Files:
