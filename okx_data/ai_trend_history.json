@@ -1,18 +1,18 @@
 {
   "TRX": {
     "scores": [
-      7,
-      7,
-      7,
-      7,
       6,
       7,
       6,
       6,
-      5,
-      5
+      6,
+      7,
+      7,
+      7,
+      7,
+      7
     ],
-    "highTrendCount": 315
+    "highTrendCount": 331
   },
   "XAUT": {
     "scores": [
@@ -121,22 +121,21 @@
   },
   "SUI": {
     "scores": [
-      8,
-      10,
       6,
       5,
-      2,
-      2,
-      2,
-      3,
-      3,
-      2
+      7,
+      7,
+      7,
+      6,
+      5,
+      6,
+      6,
+      6
     ],
-    "highTrendCount": 64
+    "highTrendCount": 65
   },
   "BNB": {
     "scores": [
-      6,
       5,
       5,
       6,
@@ -145,24 +144,25 @@
       7,
       6,
       6,
-      5
+      5,
+      7
     ],
     "highTrendCount": 7
   },
   "OKB": {
     "scores": [
-      4,
-      4,
-      4,
-      4,
+      6,
+      6,
       5,
-      8,
+      6,
+      6,
       7,
-      9,
       7,
-      7
+      7,
+      6,
+      6
     ],
-    "highTrendCount": 93
+    "highTrendCount": 124
   },
   "SOL": {
     "scores": [
@@ -181,48 +181,48 @@
   },
   "XRP": {
     "scores": [
-      6,
-      6,
-      6,
-      5,
-      5,
+      7,
       6,
       5,
-      3,
+      5,
       6,
+      4,
+      4,
+      4,
+      4,
       4
     ],
     "highTrendCount": 28
   },
   "CC": {
     "scores": [
-      4,
-      4,
-      3,
-      3,
-      3,
-      3,
-      3,
-      3,
-      3,
-      3
+      6,
+      8,
+      6,
+      5,
+      5,
+      5,
+      6,
+      6,
+      8,
+      6
     ],
-    "highTrendCount": 212
+    "highTrendCount": 217
   },
   "AVAX": {
     "scores": [
+      8,
       7,
       7,
       7,
-      6,
-      6,
-      5,
-      6,
-      5,
-      4,
-      4
+      7,
+      7,
+      7,
+      7,
+      7,
+      7
     ],
-    "highTrendCount": 37
+    "highTrendCount": 61
   },
   "IP": {
     "scores": [
@@ -238,5 +238,26 @@
       5
     ],
     "highTrendCount": 40
+  },
+  "FIL": {
+    "scores": [
+      7,
+      6,
+      5,
+      5,
+      7,
+      8,
+      7,
+      7,
+      7,
+      9
+    ],
+    "highTrendCount": 8
+  },
+  "TRUMP": {
+    "scores": [
+      7
+    ],
+    "highTrendCount": 0
   }
 }

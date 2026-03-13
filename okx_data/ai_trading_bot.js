@@ -238,10 +238,6 @@ function shouldRemoveFromBlacklist(coin, currentTrendScore) {
     tracker.lastCheck = Date.now();
     return false;
 }
-    
-    tracker.lastCheck = Date.now();
-    return false;
-}
 
 // AI交易配置 - v2.4 优化版（保护本金）
 const AI_CONFIG = {
@@ -253,13 +249,15 @@ const AI_CONFIG = {
     // 波段操作配置 - 新增
     bandTrade: {
         enabled: true,           // 启用波段操作
-        reducePositionAt: 1.5,   // 涨1.5%减仓25%（降低减仓门槛）
-        secondReduceAt: 3,       // 涨3%再减仓25%（降低减仓比例）
+        reducePositionAt: 1.5,   // 涨1.5%减仓30%（优化：更紧凑的分层止盈）
+        secondReduceAt: 3,       // 涨3%再减仓50%（优化：中期目标）
+        finalReduceAt: 6,        // 涨6%止盈剩余（优化：最终止盈，麻雀见好就收）
+        reducePercent: 30,       // 首次减仓30%
+        secondReducePercent: 50, // 二次减仓50%
         buyBackAt: -2,           // 跌2%买回（趋势≥6分）
-        reducePercent: 25        // 每次减仓25%（降低减仓比例）
     },
     minOrderInterval: 300000,     // 最小下单间隔5分钟
-    sentimentThreshold: 8,       // 舆情买入阈值(>8分买入) - 收紧：从7分提高到8分
+    sentimentThreshold: 7,       // 舆情买入阈值(>7分买入) - 优化：从8分降至7分，提高选股频率
     sentimentSellThreshold: 3,   // 舆情卖出阈值(<3分卖出)
     minCashReserve: 30,          // 最小现金保留30%（强制保留更多现金）
     tradeSize: 32,               // 单笔交易金额$32（降低：从$40降至$32）
@@ -290,7 +288,7 @@ const AI_CONFIG = {
     // 抄底策略优化配置 - v2.4 新增
     dipBuy: {
         enabled: true,           // 启用优化抄底策略
-        minTrendScore: 8,        // 趋势评分≥8分（收紧：从7分提高到8分）
+        minTrendScore: 7,        // 趋势评分≥7分（优化：从8分降至7分，提高选股频率）
         minBtcTrend: 6,          // BTC趋势≥6分（新增：大盘验证）
         minEthTrend: 5,          // ETH趋势≥5分（新增：大盘验证）
         rsiThreshold: 35,        // RSI<35（收紧：从40降到35）

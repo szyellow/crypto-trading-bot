@@ -160,22 +160,22 @@ async function checkCapitalFlow(coin) {
 }
 
 // ============================================
-// 3. 技术面综合验证
+// 3. 技术面综合验证 - 优化1：放宽条件
 // ============================================
 function validateTechnicalIndicators(sentiment, currentPrice) {
     const checks = {
-        trendScore: sentiment.score >= 6,
-        rsiValid: sentiment.rsi >= 35 && sentiment.rsi <= 75,
-        volumeValid: sentiment.volume > 1.0,
-        priceAboveMA5: currentPrice > (sentiment.ma5 || 0),
-        volatilityValid: (sentiment.volatility || 0) >= 0.3
+        trendScore: sentiment.score >= 5,        // 原6分，降低至5分
+        rsiValid: sentiment.rsi >= 30 && sentiment.rsi <= 80,  // 原35-75，放宽至30-80
+        volumeValid: sentiment.volume > 0.8,     // 原1.0，降低至0.8
+        priceAboveMA5: currentPrice > (sentiment.ma5 || 0) * 0.98,  // 允许低于MA5 2%
+        volatilityValid: (sentiment.volatility || 0) >= 0.2  // 原0.3，降低至0.2
     };
 
     const passCount = Object.values(checks).filter(v => v).length;
     const technicalScore = Math.round((passCount / 5) * 10);
 
     return {
-        passed: passCount >= 3,
+        passed: passCount >= 2,  // 原3项，降低至2项
         score: technicalScore,
         passCount,
         totalChecks: 5,
@@ -214,11 +214,11 @@ async function calculateResonanceScore(coin, sentiment, currentPrice) {
         marketEnv.score * 0.20
     );
 
-    // 判断是否可以买入
-    const canBuy = totalScore >= 7.0 && 
+    // 判断是否可以买入 - 优化1：降低门槛
+    const canBuy = totalScore >= 6.0 &&   // 原7.0，降低至6.0
                    marketEnv.canTrade && 
-                   technical.passed && 
-                   capitalFlow.hasInflow;
+                   (technical.passed || technical.score >= 5) &&  // 放宽技术面要求
+                   (capitalFlow.hasInflow || capitalFlow.score >= 4);  // 放宽资金流要求
 
     const result = {
         totalScore,
@@ -239,20 +239,22 @@ async function calculateResonanceScore(coin, sentiment, currentPrice) {
 }
 
 // ============================================
-// 5. 动态仓位计算
+// 5. 动态仓位计算 - 优化1：降低门槛，提高频率
 // ============================================
 function calculatePositionSize(resonanceScore, baseSize = 25) {
-    // 根据共振分数调整仓位
+    // 根据共振分数调整仓位 - 优化：降低门槛
     if (resonanceScore >= 9) {
         return { size: 40, reason: '共振极强(9-10分)，重仓$40' };
     } else if (resonanceScore >= 8) {
         return { size: 32, reason: '共振强(8-9分)，标准仓$32' };
     } else if (resonanceScore >= 7) {
         return { size: 25, reason: '共振良好(7-8分)，基础仓$25' };
-    } else if (resonanceScore >= 6) {
-        return { size: 15, reason: '共振一般(6-7分)，轻仓$15' };
+    } else if (resonanceScore >= 6) {  // 新增：6-7分也建仓
+        return { size: 20, reason: '共振一般(6-7分)，轻仓$20' };
+    } else if (resonanceScore >= 5) {  // 新增：5-6分也建仓（小仓位）
+        return { size: 15, reason: '共振较弱(5-6分)，试探仓$15' };
     } else {
-        return { size: 0, reason: '共振不足(<6分)，不建仓' };
+        return { size: 0, reason: '共振不足(<5分)，不建仓' };
     }
 }
 

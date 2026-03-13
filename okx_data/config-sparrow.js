@@ -5,10 +5,10 @@ module.exports = {
     // 版本号
     version: '4.1-sparrow',
     
-    // 基础参数
+    // 基础参数 - v4.2 超保守麻雀 + 分层止盈
     baseCapital: 287,           // 本金
-    dailyTarget: 3,             // 日目标 $3 (1%)
-    weeklyTarget: 7.18,         // 周目标 $7.18 (2.5%)
+    dailyTarget: 9,             // 日目标 $9 (3%) - 超保守设置
+    weeklyTarget: 21,           // 周目标 $21 (7%) - 复利目标
     
     // 时区配置 (GMT+8 北京时间)
     timeZones: {
@@ -50,11 +50,20 @@ module.exports = {
         }
     },
     
-    // 止盈止损 (麻雀战法核心)
+    // 止盈止损 (麻雀战法核心) - v4.3 优化版：更激进的止盈策略
     takeProfit: {
-        step1: 0.015,           // 1.5% 减仓50%
-        step2: 0.02,            // 2% 清仓
-        hard: 0.02              // 2% 硬止盈
+        // 优化3：更激进的止盈策略（方案D）
+        tier1: { profit: 0.005, action: 'reduce30' },   // +0.5% 减仓30%（更快锁定利润）
+        tier2: { profit: 0.01, action: 'reduce50' },    // +1% 减仓50%（累计80%）
+        tier3: { profit: 0.02, action: 'reduce100' },   // +2% 清仓（麻雀见好就收）
+        hard: 0.03,                                     // 3% 硬止盈上限（降低）
+        
+        // 动态调整（根据趋势评分）- 优化设置
+        dynamic: {
+            trend8plus: { profit: 0.03, action: 'reduce100' },  // 趋势≥8分：+3%（降低）
+            trend6to7: { profit: 0.02, action: 'reduce100' },   // 趋势6-7分：+2%（降低）
+            trend5minus: { profit: 0.01, action: 'reduce100' }  // 趋势≤5分：+1%（降低）
+        }
     },
     stopLoss: {
         soft: 0.003,            // 0.3% 预警
@@ -62,12 +71,12 @@ module.exports = {
         time: 120               // 2小时时间止损
     },
     
-    // 选股门槛 (降低门槛，提高频率)
+    // 选股门槛 (优化1：降低门槛，提高买入频率)
     entryThreshold: {
-        trendScore: 6,          // 趋势≥6分
-        resonanceScore: 6,      // 共振≥6分
-        btcTrend: 4,            // BTC≥4分
-        volatility: { min: 0.5, max: 2.0 }  // 波动率0.5%-2%
+        trendScore: 5,          // 趋势≥5分（原6分，降低1分）
+        resonanceScore: 5,      // 共振≥5分（原6分，降低1分）
+        btcTrend: 3,            // BTC≥3分（原4分，降低1分）
+        volatility: { min: 0.3, max: 3.0 }  // 波动率0.3%-3%（放宽）
     },
     
     // 仓位管理

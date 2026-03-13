@@ -1,32 +1,50 @@
 {
   "summary": {
-    "totalTrades": 1,
-    "buyCount": 0,
-    "sellCount": 1,
-    "takeProfitSells": 0,
-    "stopLossSells": 1,
-    "winRate": "0.00",
-    "avgProfit": "0.00",
-    "avgLoss": "1.50",
+    "totalTrades": 6,
+    "buyCount": 4,
+    "sellCount": 2,
+    "takeProfitSells": 2,
+    "stopLossSells": 0,
+    "winRate": "100.00",
+    "avgProfit": "2.13",
+    "avgLoss": "0.00",
     "profitLossRatio": "0.00",
-    "totalProfit": "0.00",
-    "totalLoss": "1.50",
-    "netProfit": "-1.50"
+    "totalProfit": "4.27",
+    "totalLoss": "0.00",
+    "netProfit": "4.27"
   },
   "coinStats": {
-    "IP": {
+    "FIL": {
       "buys": 0,
       "sells": 1,
+      "profit": 1,
+      "loss": 0
+    },
+    "OKB": {
+      "buys": 0,
+      "sells": 1,
+      "profit": 1,
+      "loss": 0
+    },
+    "TRUMP": {
+      "buys": 2,
+      "sells": 0,
       "profit": 0,
-      "loss": 1
+      "loss": 0
+    },
+    "BNB": {
+      "buys": 2,
+      "sells": 0,
+      "profit": 0,
+      "loss": 0
     }
   },
   "today": {
-    "date": "2026-03-11",
-    "trades": 1,
-    "buys": 0,
-    "sells": 1,
-    "volume": "0.00"
+    "date": "2026-03-13",
+    "trades": 6,
+    "buys": 4,
+    "sells": 2,
+    "volume": "85.00"
   },
-  "lastUpdated": "2026-03-11T05:50:40.861Z"
+  "lastUpdated": "2026-03-13T01:35:06.180Z"
 }

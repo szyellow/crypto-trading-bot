@@ -7,37 +7,37 @@
 const fs = require('fs');
 
 // ============================================
-// 策略配置
+// 策略配置 - 优化1：放宽条件，提高买入频率
 // ============================================
 const SHORT_TERM_CONFIG = {
-    // 选股门槛（更严格）
-    MIN_TREND_SCORE: 8,           // 趋势评分 >= 8分
+    // 选股门槛（放宽）
+    MIN_TREND_SCORE: 6,           // 趋势评分 >= 6分（原8分，降低2分）
     MAX_TREND_SCORE: 10,          // 趋势评分 <= 10分
-    RSI_MIN: 40,                  // RSI >= 40（避免超卖）
-    RSI_MAX: 60,                  // RSI <= 60（避免超买）
-    MIN_VOLUME_RATIO: 1.0,        // 成交量 >= 1.0x
-    MAX_24H_CHANGE: 5,            // 24h涨跌幅 <= +5%
-    MIN_24H_CHANGE: -2,           // 24h涨跌幅 >= -2%
-    MIN_MARKET_TREND: 6,          // 大盘趋势 >= 6分
+    RSI_MIN: 30,                  // RSI >= 30（原40，降低10）
+    RSI_MAX: 70,                  // RSI <= 70（原60，提高10）
+    MIN_VOLUME_RATIO: 0.8,        // 成交量 >= 0.8x（原1.0，降低0.2）
+    MAX_24H_CHANGE: 8,            // 24h涨跌幅 <= +8%（原5%，放宽）
+    MIN_24H_CHANGE: -5,           // 24h涨跌幅 >= -5%（原-2%，放宽）
+    MIN_MARKET_TREND: 4,          // 大盘趋势 >= 4分（原6分，降低2分）
     
     // 仓位管理
     POSITION_SIZE: 40,            // 单笔金额 $40
     MAX_POSITIONS: 3,             // 最大持仓3个
     MAX_POSITION_PERCENT: 15,     // 单个币种最大占比15%
     
-    // 止盈止损（更严格）
-    STOP_LOSS: -1.0,              // 止损 -1%（固定）
-    TAKE_PROFIT_1: 2.0,           // 第一止盈 +2%（减仓50%）
-    TAKE_PROFIT_2: 5.0,           // 第二止盈 +5%（清仓）
-    TIME_STOP: 24,                // 时间止损 24小时
+    // 止盈止损（优化3：更激进的止盈）
+    STOP_LOSS: -1.5,              // 止损 -1.5%（原-1%，放宽）
+    TAKE_PROFIT_1: 1.0,           // 第一止盈 +1%（原2%，降低）
+    TAKE_PROFIT_2: 2.0,           // 第二止盈 +2%（原5%，降低）
+    TIME_STOP: 48,                // 时间止损 48小时（原24，放宽）
     
     // 交易频率控制
-    MIN_TRADE_INTERVAL: 4,        // 同一币种最小交易间隔4小时
-    MAX_DAILY_TRADES: 3,          // 每日最大交易笔数
+    MIN_TRADE_INTERVAL: 2,        // 同一币种最小交易间隔2小时（原4，缩短）
+    MAX_DAILY_TRADES: 5,          // 每日最大交易笔数（原3，增加）
     
-    // 波动率筛选
-    MIN_VOLATILITY: 0.5,          // 最小波动率0.5%
-    MAX_VOLATILITY: 3.0,          // 最大波动率3%（避免剧烈波动）
+    // 波动率筛选（放宽）
+    MIN_VOLATILITY: 0.3,          // 最小波动率0.3%（原0.5，降低）
+    MAX_VOLATILITY: 5.0,          // 最大波动率5%（原3%，放宽）
 };
 
 // ============================================

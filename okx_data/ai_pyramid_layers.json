@@ -4,17 +4,5 @@
     "firstBuyPrice": 0.2138,
     "lastBuyPrice": 0.2138,
     "totalInvested": 25
-  },
-  "CC": {
-    "layers": 1,
-    "firstBuyPrice": 0.14889,
-    "lastBuyPrice": 0.14889,
-    "totalInvested": 25
-  },
-  "AVAX": {
-    "layers": 1,
-    "firstBuyPrice": 9.631,
-    "lastBuyPrice": 9.631,
-    "totalInvested": 25
   }
 }
