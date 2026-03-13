@@ -24389,6 +24389,64 @@
         "avgLoss": 0,
         "profitFactor": 0
       }
+    },
+    {
+      "version": "2.1.842",
+      "date": "2026-03-13T01:42:56.487Z",
+      "trigger": "0笔连续亏损",
+      "changes": [
+        "胜率偏低(0%)，收紧止损",
+        "盈亏比偏低(0.00)，优化止盈止损比"
+      ],
+      "paramsBefore": {
+        "stopLoss": -3,
+        "takeProfit": 15,
+        "maxPositions": 5,
+        "tradeSize": 40,
+        "sentimentThreshold": 8
+      },
+      "paramsAfter": {
+        "stopLoss": -3,
+        "takeProfit": 15,
+        "maxPositions": 5,
+        "tradeSize": 40,
+        "sentimentThreshold": 8
+      },
+      "performance": {
+        "winRate": 0,
+        "avgProfit": 0,
+        "avgLoss": 0,
+        "profitFactor": 0
+      }
+    },
+    {
+      "version": "2.1.843",
+      "date": "2026-03-13T01:45:11.926Z",
+      "trigger": "0笔连续亏损",
+      "changes": [
+        "胜率偏低(0%)，收紧止损",
+        "盈亏比偏低(0.00)，优化止盈止损比"
+      ],
+      "paramsBefore": {
+        "stopLoss": -3,
+        "takeProfit": 15,
+        "maxPositions": 5,
+        "tradeSize": 40,
+        "sentimentThreshold": 8
+      },
+      "paramsAfter": {
+        "stopLoss": -3,
+        "takeProfit": 15,
+        "maxPositions": 5,
+        "tradeSize": 40,
+        "sentimentThreshold": 8
+      },
+      "performance": {
+        "winRate": 0,
+        "avgProfit": 0,
+        "avgLoss": 0,
+        "profitFactor": 0
+      }
     }
   ],
   "currentParams": {
@@ -24403,7 +24461,7 @@
     "wins": 0,
     "losses": 0,
     "consecutiveLosses": 0,
-    "lastTradeTime": 1773365709317,
+    "lastTradeTime": 1773366311926,
     "paused": false,
     "pauseUntil": null
   }
